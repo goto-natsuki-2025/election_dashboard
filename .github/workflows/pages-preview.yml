@@ -2,11 +2,11 @@
 
 on:
   push:
-    branches: [ '**' ]
+    branches: [ '**' ]      # すべてのブランチで実行
   pull_request:
   workflow_dispatch:
 
-permissions:
+permissions:               # ★ デプロイに必要な権限を明示
   contents: read
   pages: write
   id-token: write
@@ -17,21 +17,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 必要ならビルドを入れる（例：Vite 等）
       # - run: npm ci && npm run build
 
+      # 配信したい実体をアップロード（docs/ でない場合は変更）
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: .        # ← 公開したいディレクトリに合わせて変更
+          path: docs
 
   deploy:
     needs: build
     runs-on: ubuntu-latest
     environment:
-      name: preview
+      name: github-pages    # ★ 環境名を設定画面と一致させる
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - id: deployment
+      - name: Deploy to GitHub Pages
+        id: deployment
         uses: actions/deploy-pages@v4
         with:
-          preview: true
+          # ★ main は本番（preview=false）、それ以外はプレビュー（preview=true）
+          preview: ${{ github.ref != 'refs/heads/main' }}
