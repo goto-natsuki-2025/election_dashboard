@@ -35,7 +35,7 @@ jobs:
       - name: Upload static site
         uses: actions/upload-pages-artifact@v3
         with:
-          path: election_dashboard
+          path: .
 
   deploy:
     needs: build
