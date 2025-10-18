@@ -21,6 +21,11 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pandas pyarrow
+
       - name: Generate static data artifacts
         run: python regenerate_static_data.py
 
