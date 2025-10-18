@@ -17,7 +17,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # 必要ならビルドを入れる（例：Vite 等）
+      # 必要ならビルドを入れる
       # - run: npm ci && npm run build
 
       # 配信したい実体をアップロード（docs/ でない場合は変更）
