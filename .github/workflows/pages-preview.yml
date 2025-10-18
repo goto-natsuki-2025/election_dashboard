@@ -1,4 +1,4 @@
-name: pages
+﻿name: pages
 
 on:
   push:
@@ -17,7 +17,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # ここで必要ならビルド（Vite等）。静的サイトなら省略し docs/ をそのまま出す
       # - run: npm ci && npm run build
 
       - name: Upload artifact
@@ -29,11 +28,10 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     environment:
-      name: github-pages
+      name: preview
       url: ${{ steps.deployment.outputs.page_url }}
-    # PRはそのまま（プレビュー可）、mainは本番、それ以外はプレビュー
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
         with:
-          preview: ${{ github.ref != 'refs/heads/main' }}
+          preview: true
