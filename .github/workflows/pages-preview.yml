@@ -3,7 +3,6 @@
 on:
   push:
     branches: [ '**' ]      # すべてのブランチで実行
-  pull_request:
   workflow_dispatch:
 
 permissions:               # ★ デプロイに必要な権限を明示
