@@ -352,7 +352,7 @@
     <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
     <script type="module">
-
+      import { ungzip } from "https://cdn.jsdelivr.net/npm/pako@2.1.0/+esm";
       const WINNING_LABELS = new Set(["当選", "繰上当選", "繰り上げ当選", "繰り上げ当選"]);
 
       async function loadCsv(path) {
@@ -373,10 +373,19 @@
       }
 
       async function loadCandidateCsv(path) {
-        const text = await fetch(path).then((res) => {
-          if (!res.ok) throw new Error(`候補者CSVの取得に失敗しました: ${path}`);
-          return res.text();
-        });
+        const response = await fetch(path);
+        if (!response.ok) {
+          throw new Error(`???CSV??????????: ${path}`);
+        }
+        const buffer = await response.arrayBuffer();
+        const source = new Uint8Array(buffer);
+        const decoder = new TextDecoder("utf-8");
+        let text;
+        try {
+           text = decoder.decode(ungzip(source));
+        } catch (error) {
+          text = decoder.decode(source);
+        }
         const parsed = Papa.parse(text, {
           header: true,
           skipEmptyLines: true,
@@ -387,6 +396,7 @@
           votes: row.votes ? Number.parseFloat(row.votes) : null,
         }));
       }
+
 
       function formatDate(date) {
         if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "-";
@@ -708,7 +718,7 @@
       async function main() {
         const [electionsRaw, candidates] = await Promise.all([
           loadCsv("data/election_summary.csv"),
-          loadCandidateCsv("data/candidate_details.csv"),
+          loadCandidateCsv("data/candidate_details.csv.gz"),
         ]);
 
         const elections = initialiseFilters(electionsRaw);
