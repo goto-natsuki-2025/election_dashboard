@@ -17,7 +17,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # 必要ならビルドを入れる（例：Vite 等）
+      # 必要ならビルドを入れる
       # - run: npm ci && npm run build
 
       # 配信したい実体をアップロード（docs/ でない場合は変更）
@@ -30,8 +30,8 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     environment:
-      name: github-pages    # ★ 環境名を設定画面と一致させる
-      url: ${{ steps.deployment.outputs.page_url }}
+      name: github-pages    # GitHub Pages 用の環境を指定
+      url: ${{ steps.deployment.outputs.preview_url || steps.deployment.outputs.page_url }}
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
