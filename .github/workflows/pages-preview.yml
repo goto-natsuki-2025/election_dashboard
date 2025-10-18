@@ -13,7 +13,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
+      - name: Checkout repository # リポジトリをチェックアウト
         uses: actions/checkout@v4
 
       - name: Set up Python # プレビュー用の Pages ビルドで Python を使用
