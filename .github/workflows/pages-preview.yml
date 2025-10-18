@@ -1,54 +1,39 @@
-name: Pages Preview
+name: pages
 
 on:
+  push:
+    branches: [ '**' ]
   pull_request:
-    branches:
-      - main
   workflow_dispatch:
 
 permissions:
   contents: read
+  pages: write
+  id-token: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository # リポジトリをチェックアウト
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python # プレビュー用の Pages ビルドで Python を使用
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
+      # ここで必要ならビルド（Vite等）。静的サイトなら省略し docs/ をそのまま出す
+      # - run: npm ci && npm run build
 
-      - name: Install dependencies # DB から CSV/Gzip を生成するために pandas/pyarrow を導入
-        run: |
-          python -m pip install --upgrade pip
-          pip install pandas pyarrow
-
-      - name: Generate static data artifacts # SQLite の内容を export し、Pages の静的データを更新
-        run: python regenerate_static_data.py
-
-      - name: Configure Pages
-        uses: actions/configure-pages@v5
-
-      - name: Upload static site # index.html と data/ をまとめて Pages へアップロード
+      - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: .
+          path: docs        # ← 公開したいディレクトリに合わせて変更
 
   deploy:
     needs: build
     runs-on: ubuntu-latest
-    permissions:
-      pages: write
-      id-token: write
     environment:
-      name: preview
+      name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+    # PRはそのまま（プレビュー可）、mainは本番、それ以外はプレビュー
     steps:
-      - name: Deploy preview # Pages のプレビュー環境へデプロイ
-        id: deployment
+      - id: deployment
         uses: actions/deploy-pages@v4
         with:
-          preview: true
+          preview: ${{ github.ref != 'refs/heads/main' }}
