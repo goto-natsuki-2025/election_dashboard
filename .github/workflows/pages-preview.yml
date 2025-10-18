@@ -2,7 +2,9 @@
 
 on:
   push:
-    branches: [ '**' ]      # すべてのブランチで実行
+    branches: [ main ]          # 本番リリース用
+  pull_request:
+    branches: [ main ]          # PR プレビュー用
   workflow_dispatch:
 
 permissions:               # ★ デプロイに必要な権限を明示
