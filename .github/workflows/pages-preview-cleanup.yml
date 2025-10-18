@@ -1,0 +1,73 @@
+name: pr-preview-cleanup
+
+on:
+  pull_request:
+    types:
+      - closed
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  cleanup-preview:
+    if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for gh-pages branch
+        id: branch
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            try {
+              await github.rest.repos.getBranch({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                branch: 'gh-pages',
+              });
+              core.setOutput('exists', 'true');
+            } catch (error) {
+              core.setOutput('exists', 'false');
+            }
+
+      - name: Checkout gh-pages branch
+        if: steps.branch.outputs.exists == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          fetch-depth: 0
+
+      - name: Remove preview directory
+        if: steps.branch.outputs.exists == 'true'
+        id: cleanup
+        env:
+          PR_NUMBER: ${{ github.event.number }}
+        run: |
+          set -eu
+          TARGET="pr-preview/pr-${PR_NUMBER}"
+          if [ ! -d "$TARGET" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git rm -r "$TARGET"
+          if git status --short | grep -q .; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Commit and push removal
+        if: steps.cleanup.outputs.changed == 'true'
+        env:
+          PR_NUMBER: ${{ github.event.number }}
+        run: |
+          set -eu
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: remove preview for PR #${PR_NUMBER}"
+          git push origin gh-pages
+
+      - name: Skip cleanup
+        if: steps.branch.outputs.exists != 'true'
+        run: echo "gh-pages branch does not exist; skipping preview cleanup."
