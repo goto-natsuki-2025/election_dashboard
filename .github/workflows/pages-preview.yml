@@ -16,23 +16,23 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Set up Python # プレビュー用の Pages ビルドで Python を使用
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Install dependencies
+      - name: Install dependencies # DB から CSV/Gzip を生成するために pandas/pyarrow を導入
         run: |
           python -m pip install --upgrade pip
           pip install pandas pyarrow
 
-      - name: Generate static data artifacts
+      - name: Generate static data artifacts # SQLite の内容を export し、Pages の静的データを更新
         run: python regenerate_static_data.py
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
-      - name: Upload static site
+      - name: Upload static site # index.html と data/ をまとめて Pages へアップロード
         uses: actions/upload-pages-artifact@v3
         with:
           path: .
@@ -47,7 +47,7 @@ jobs:
       name: preview
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Deploy preview
+      - name: Deploy preview # Pages のプレビュー環境へデプロイ
         id: deployment
         uses: actions/deploy-pages@v4
         with:
