@@ -1,4 +1,4 @@
-﻿name: pr-preview
+name: pr-preview
 
 on:
   pull_request:
@@ -74,8 +74,8 @@ jobs:
             const issueNumber = context.issue.number;
             const previewUrl = '${{ steps.preview.outputs.url }}';
             const body = `${marker}
-プレビュー URL: ${previewUrl}
-最終更新: ${new Date().toISOString()}`;
+Preview URL: ${previewUrl}
+Last updated: ${new Date().toISOString()}`;
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -100,3 +100,4 @@ jobs:
                 body,
               });
             }
+
