@@ -52,7 +52,7 @@ jobs:
           publish_dir: public
           destination_dir: pr-preview/pr-${{ github.event.number }}
           keep_files: true
-          commit_message: docs: deploy preview for PR #${{ github.event.number }}
+          commit_message: "docs: deploy preview for PR #${{ github.event.number }}"
 
       - name: Compute preview URL
         id: preview
