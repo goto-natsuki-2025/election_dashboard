@@ -12,8 +12,8 @@ export function isWinningOutcome(outcome) {
 
 export function ensurePartyName(name) {
   const text = normaliseString(name);
-  if (!text || text === "-" || text.includes("無所属")) {
-    return "無所属";
+  if (!text || text === "-" || text.includes("\u7121\u6240\u5c5e")) {
+    return "\u7121\u6240\u5c5e";
   }
   return text;
 }
@@ -28,6 +28,9 @@ export function parseYYYYMMDD(value) {
 }
 
 export function formatDate(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+    return "-";
+  }
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, "0");
   const d = String(date.getDate()).padStart(2, "0");
