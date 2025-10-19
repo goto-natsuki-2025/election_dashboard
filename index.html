@@ -457,26 +457,46 @@
         }
 
         const timelineEvents = [];
+        const eventsByKey = new Map();
         for (const event of events) {
-          const termId = `${event.key}-${event.date.getTime()}`;
-          timelineEvents.push({
-            type: "election",
-            date: event.date,
-            dateCode: event.dateCode,
-            key: event.key,
-            winners: event.winners,
-            termId,
-          });
-          const expiration = new Date(event.date.getTime());
-          expiration.setFullYear(expiration.getFullYear() + termYears);
-          timelineEvents.push({
-            type: "expiration",
-            date: expiration,
-            dateCode: formatYmd(expiration),
-            key: event.key,
-            winners: event.winners,
-            termId,
-          });
+          if (!eventsByKey.has(event.key)) {
+            eventsByKey.set(event.key, []);
+          }
+          eventsByKey.get(event.key).push(event);
+        }
+
+        for (const list of eventsByKey.values()) {
+          list.sort((a, b) => a.date - b.date);
+          for (let index = 0; index < list.length; index += 1) {
+            const event = list[index];
+            const termId = `${event.key}-${event.date.getTime()}`;
+            timelineEvents.push({
+              type: "election",
+              date: event.date,
+              dateCode: event.dateCode,
+              key: event.key,
+              winners: event.winners,
+              termId,
+            });
+
+            let expirationDate;
+            const nextEvent = list[index + 1];
+            if (nextEvent) {
+              expirationDate = new Date(nextEvent.date.getTime());
+            } else {
+              expirationDate = new Date(event.date.getTime());
+              expirationDate.setFullYear(expirationDate.getFullYear() + termYears);
+            }
+
+            timelineEvents.push({
+              type: "expiration",
+              date: expirationDate,
+              dateCode: formatYmd(expirationDate),
+              key: event.key,
+              winners: event.winners,
+              termId,
+            });
+          }
         }
 
         timelineEvents.sort((a, b) => {
