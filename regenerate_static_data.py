@@ -63,14 +63,9 @@ detail_df = detail_df.rename(
         detail_columns[11]: "source_file",
     }
 )
-detail_df.to_parquet(DATA_DIR / "candidate_details.parquet", index=False)
 detail_df.to_csv(
     DATA_DIR / "candidate_details.csv.gz",
     index=False,
     encoding="utf-8",
     compression="gzip",
-)
-
-detail_df.head(500).to_csv(
-    DATA_DIR / "candidate_details_sample.csv", index=False, encoding="utf-8"
 )
