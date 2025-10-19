@@ -85,9 +85,22 @@ export async function loadCandidateDetails(summaryIndex) {
       }
     }
 
+    const ageValue = Number(row.age);
+    const votesValue = Number(row.votes);
+
     return {
+      candidate_id: normaliseString(row.candidate_id),
+      name: normaliseString(row.name),
+      kana: normaliseString(row.kana),
+      age: Number.isFinite(ageValue) ? ageValue : null,
+      gender: normaliseString(row.gender),
+      incumbent_status: normaliseString(row.incumbent_status),
+      profession: normaliseString(row.profession),
       party: ensurePartyName(row.party),
+      votes: Number.isFinite(votesValue) ? votesValue : null,
       outcome: normaliseString(row.outcome),
+      image_file: normaliseString(row.image_file),
+      source_file: rawSource,
       source_key: electionKey,
       source_date_code: electionDateCode,
       election_date: electionDate,
