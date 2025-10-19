@@ -71,7 +71,6 @@ export function buildPartyTimeline(events, { topN = 8, termYears = TERM_YEARS } 
     eventsByKey.get(event.key).push(event);
   }
 
-  const dayMs = 24 * 60 * 60 * 1000;
   for (const list of eventsByKey.values()) {
     list.sort((a, b) => a.date - b.date);
     for (let index = 0; index < list.length; index += 1) {
@@ -89,10 +88,7 @@ export function buildPartyTimeline(events, { topN = 8, termYears = TERM_YEARS } 
       let expirationDate;
       const nextEvent = list[index + 1];
       if (nextEvent) {
-        const candidateTime = nextEvent.date.getTime() - dayMs;
-        const baseTime = event.date.getTime();
-        const expirationTime = Math.max(candidateTime, baseTime);
-        expirationDate = new Date(expirationTime);
+        expirationDate = new Date(Math.max(nextEvent.date.getTime(), event.date.getTime()));
       } else {
         expirationDate = new Date(event.date.getTime());
         expirationDate.setFullYear(expirationDate.getFullYear() + termYears);
