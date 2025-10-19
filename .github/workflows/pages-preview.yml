@@ -73,9 +73,7 @@ jobs:
             const marker = '<!-- pr-preview -->';
             const issueNumber = context.issue.number;
             const previewUrl = '${{ steps.preview.outputs.url }}';
-            const body = `${marker}
-Preview URL: ${previewUrl}
-Last updated: ${new Date().toISOString()}`;
+            const body = `${marker}\nPreview URL: ${previewUrl}\nLast updated: ${new Date().toISOString()}`;
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
