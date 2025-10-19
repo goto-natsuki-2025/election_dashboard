@@ -28,11 +28,14 @@
         --border: #dce4f0;
         --accent: #2563eb;
         --accent-soft: rgba(37, 99, 235, 0.08);
+        --accent-strong: #1d4ed8;
         --text: #0f172a;
         --text-muted: #475569;
       }
 
-      * {
+      *,
+      *::before,
+      *::after {
         box-sizing: border-box;
       }
 
@@ -46,20 +49,20 @@
       }
 
       header {
-        padding: 24px clamp(16px, 4vw, 48px);
+        padding: 32px clamp(16px, 4vw, 48px);
         background: var(--card);
         border-bottom: 1px solid var(--border);
       }
 
       header h1 {
         margin: 0;
-        font-size: clamp(20px, 3vw, 28px);
+        font-size: clamp(24px, 3vw, 32px);
         font-weight: 600;
         letter-spacing: 0.03em;
       }
 
       header p {
-        margin: 8px 0 0;
+        margin: 10px 0 0;
         color: var(--text-muted);
         font-size: 14px;
       }
@@ -68,192 +71,99 @@
         padding: clamp(16px, 4vw, 48px);
         display: grid;
         gap: clamp(20px, 4vw, 32px);
-      }
-
-      .layout {
-        display: grid;
-        grid-template-columns: 320px 1fr;
-        gap: clamp(20px, 3vw, 36px);
-      }
-
-      .layout > .card {
-        align-self: start;
-      }
-
-      @media (max-width: 1080px) {
-        .layout {
-          grid-template-columns: 1fr;
-        }
-      }
-
-      .card {
-        background: var(--card);
-        border-radius: 16px;
-        border: 1px solid var(--border);
-        padding: clamp(16px, 3vw, 24px);
-        box-shadow: 0 14px 38px -24px rgba(15, 23, 42, 0.18);
-      }
-
-      .card h2 {
-        font-size: 16px;
-        margin: 0 0 16px;
-        font-weight: 600;
-        color: var(--text);
+        max-width: 1200px;
+        margin: 0 auto;
       }
 
       .summary-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
         gap: 16px;
       }
 
       .summary-item {
-        background: var(--accent-soft);
-        border-radius: 14px;
-        padding: 16px;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 20px;
         display: flex;
         flex-direction: column;
-        gap: 6px;
+        gap: 8px;
+        box-shadow: 0 12px 34px -24px rgba(15, 23, 42, 0.25);
       }
 
       .summary-item span {
         color: var(--text-muted);
-        font-size: 13px;
-        letter-spacing: 0.02em;
+        font-size: 12px;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
       }
 
       .summary-item strong {
-        font-size: 22px;
+        font-size: 26px;
         font-weight: 600;
-        color: var(--accent);
+        color: var(--accent-strong);
       }
 
-      .filters {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr);
-        gap: 12px;
-      }
-
-      .filters input,
-      .filters select,
-      .filters button {
-        width: 100%;
-        max-width: 100%;
-      }
-
-      .filter-group {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-      }
-
-      .date-range {
-        display: flex;
-        gap: 8px;
-      }
-
-      .date-range > * {
-        flex: 1;
-        min-width: 0;
-      }
-
-      label {
-        font-size: 13px;
+      .summary-item small {
+        font-size: 12px;
         color: var(--text-muted);
-        font-weight: 500;
       }
 
-      input,
-      select {
-        font: inherit;
-        padding: 10px 12px;
-        border-radius: 10px;
+      .card {
+        background: var(--card);
         border: 1px solid var(--border);
-        background: #fff;
+        border-radius: 18px;
+        padding: clamp(18px, 3vw, 28px);
+        box-shadow: 0 16px 40px -28px rgba(15, 23, 42, 0.28);
+      }
+
+      .card h2 {
+        margin: 0 0 12px;
+        font-size: 18px;
+        font-weight: 600;
         color: var(--text);
-        transition: border 0.2s ease, box-shadow 0.2s ease;
       }
 
-      input:focus,
-      select:focus {
-        outline: none;
-        border-color: var(--accent);
-        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
-      }
-
-      .charts {
-        display: grid;
-        gap: 20px;
-      }
-
-      .chart {
-        height: 320px;
-      }
-
-      table {
-        width: 100%;
-        border-collapse: collapse;
+      .card p.description {
+        margin: 0 0 20px;
+        color: var(--text-muted);
         font-size: 14px;
       }
 
-      thead {
-        font-size: 12px;
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
-        color: var(--text-muted);
+      .top-parties {
+        display: grid;
+        gap: 8px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
       }
 
-      th,
-      td {
-        padding: 12px 10px;
-        text-align: left;
-        border-bottom: 1px solid var(--border);
-      }
-
-      tbody tr:hover {
-        background: rgba(37, 99, 235, 0.04);
-      }
-
-      .badge {
-        display: inline-flex;
+      .top-parties li {
+        display: flex;
         align-items: center;
-        gap: 6px;
-        border-radius: 999px;
-        padding: 4px 10px;
-        background: rgba(15, 23, 42, 0.06);
-        font-size: 12px;
+        justify-content: space-between;
+        background: var(--accent-soft);
+        border-radius: 12px;
+        padding: 12px 16px;
         font-weight: 500;
+      }
+
+      .top-parties span {
         color: var(--text-muted);
+        font-size: 13px;
       }
 
-      .badge.winner {
-        background: rgba(59, 130, 246, 0.12);
-        color: #1d4ed8;
+      .chart {
+        width: 100%;
+        min-height: 320px;
       }
 
-      .table-container {
-        max-height: 480px;
-        overflow: auto;
-      }
-
-      .pill {
-        display: inline-flex;
-        align-items: center;
-        padding: 4px 10px;
-        border-radius: 999px;
-        background: rgba(15, 23, 42, 0.08);
+      footer {
+        text-align: center;
+        color: var(--text-muted);
         font-size: 12px;
-        color: var(--text-muted);
-      }
-
-      .pill + .pill {
-        margin-left: 6px;
-      }
-
-      .footer-note {
-        font-size: 12px;
-        color: var(--text-muted);
-        text-align: right;
+        margin: 16px 0 32px;
       }
     </style>
   </head>
@@ -261,612 +171,383 @@
     <header>
       <h1>選挙集図盤</h1>
       <p>
-        GitHub Pages 上で静的公開された CSV / Parquet データをブラウザ内で集計し、選挙の概況と候補者動向を可視化します。
+        直近4年間に実施された自治体選挙をもとに、政党別の所属議員数を集計し、
+        全国の勢力図と推移を可視化します。
       </p>
     </header>
     <main>
-      <section class="summary-grid" id="summary-cards">
+      <section class="summary-grid">
         <article class="summary-item">
-          <span>選挙件数</span>
-          <strong id="summary-elections">-</strong>
+          <span>対象自治体</span>
+          <strong id="summary-municipalities">-</strong>
+          <small>直近4年以内の最新選挙を採用</small>
         </article>
         <article class="summary-item">
-          <span>候補者総数</span>
-          <strong id="summary-candidates">-</strong>
+          <span>所属議員総数</span>
+          <strong id="summary-seats">-</strong>
+          <small>上記自治体で当選した議員の合計</small>
         </article>
         <article class="summary-item">
-          <span>政党数</span>
+          <span>政党・会派数</span>
           <strong id="summary-parties">-</strong>
-        </article>
-        <article class="summary-item">
-          <span>平均競争率（立候補数 / 定数）</span>
-          <strong id="summary-competition">-</strong>
+          <small>無所属を含む判明している会派数</small>
         </article>
       </section>
 
-      <section class="layout">
-        <aside class="card filters">
-          <div class="filter-group">
-            <h2>検索フィルタ</h2>
-            <p style="margin: 0; color: var(--text-muted); font-size: 13px">
-              選挙名・日付レンジ・政党で絞り込み、対象選挙のみを集図盤へ反映します。
-            </p>
-          </div>
-          <div class="filter-group">
-            <label for="search-text">キーワード（自治体・選挙名）</label>
-            <input
-              id="search-text"
-              type="search"
-              placeholder="例：横浜市議会議員選挙"
-              autocomplete="off"
-            />
-          </div>
-          <div class="filter-group">
-            <label>投票日レンジ</label>
-            <div class="date-range">
-              <input id="date-start" type="date" />
-              <input id="date-end" type="date" />
-            </div>
-          </div>
-          <div class="filter-group">
-            <label for="party-select">政党で絞り込み</label>
-            <select id="party-select">
-              <option value="">すべての政党</option>
-            </select>
-          </div>
-          <div class="filter-group">
-            <button
-              id="reset-button"
-              type="button"
-              style="
-                padding: 10px 16px;
-                border-radius: 999px;
-                border: none;
-                font-weight: 600;
-                background: var(--accent);
-                color: white;
-                cursor: pointer;
-                transition: transform 0.2s ease, box-shadow 0.2s ease;
-              "
-            >
-              条件をリセット
-            </button>
-          </div>
-        </aside>
+      <section class="card">
+        <h2>政党別所属議員数（直近4年・最新選挙）</h2>
+        <p class="description">
+          最新選挙で当選した議員を政党・会派ごとに集計したものです。上位勢力の規模感を俯瞰できます。
+        </p>
+        <ol class="top-parties" id="top-parties"></ol>
+      </section>
 
-        <section class="charts">
-          <article class="card">
-            <h2>選挙スケジュールの推移</h2>
-            <div id="timeline-chart" class="chart"></div>
-          </article>
-          <article class="card">
-            <h2>政党別 当選者と候補者数</h2>
-            <div id="party-chart" class="chart"></div>
-          </article>
-          <article class="card">
-            <h2>候補者の属性（年齢中央値 / 性別構成）</h2>
-            <div id="demographics-chart" class="chart"></div>
-          </article>
-          <article class="card">
-            <h2>検索結果</h2>
-            <div class="table-container">
-              <table>
-                <thead>
-                  <tr>
-                    <th>選挙名</th>
-                    <th>投票日</th>
-                    <th>定数</th>
-                    <th>立候補数</th>
-                    <th>政党</th>
-                    <th>勝敗</th>
-                  </tr>
-                </thead>
-                <tbody id="results-body"></tbody>
-              </table>
-            </div>
-            <p class="footer-note" id="results-count">- 件表示</p>
-          </article>
-        </section>
+      <section class="card">
+        <h2>政党別所属議員数の推移</h2>
+        <p class="description">
+          各自治体の最新選挙日を時系列に並べ、累積議席数の推移を描画しています。
+          折れ線は政党ごとの勢力の伸び縮みを示します（上位会派のみ表示）。
+        </p>
+        <div id="party-trend-chart" class="chart" aria-label="政党別所属議員数の推移"></div>
       </section>
     </main>
+    <footer id="data-range-note"></footer>
 
     <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
     <script type="module">
       import { ungzip } from "https://cdn.jsdelivr.net/npm/pako@2.1.0/+esm";
-      const WINNING_LABELS = new Set(["当選", "繰上当選", "繰り上げ当選", "繰り上げ当選"]);
 
-      async function loadCsv(path) {
-        const text = await fetch(path).then((res) => {
-          if (!res.ok) throw new Error(`CSV の取得に失敗しました: ${path}`);
-          return res.text();
-        });
-        const parsed = Papa.parse(text, {
-          header: true,
-          dynamicTyping: true,
-          skipEmptyLines: true,
-        });
-        return parsed.data.map((row) => ({
-          ...row,
-          election_day: row.election_day ? new Date(row.election_day) : null,
-          notice_date: row.notice_date ? new Date(row.notice_date) : null,
-        }));
+      const DATA_PATH = {
+        elections: "data/election_summary.csv",
+        candidates: "data/candidate_details.csv.gz",
+      };
+
+      const WINNING_KEYWORDS = ["当選", "繰上当選", "繰り上げ当選", "信任", "補選当選"];
+      const FOUR_YEARS_MS = 1000 * 60 * 60 * 24 * 365 * 4;
+
+      function normaliseString(value) {
+        return (value ?? "").toString().trim();
       }
 
-      async function loadCandidateCsv(path) {
-        const response = await fetch(path);
-        if (!response.ok) {
-          throw new Error(`???CSV??????????: ${path}`);
-        }
-        const buffer = await response.arrayBuffer();
-        const source = new Uint8Array(buffer);
-        const decoder = new TextDecoder("utf-8");
-        let text;
-        try {
-           text = decoder.decode(ungzip(source));
-        } catch (error) {
-          text = decoder.decode(source);
-        }
-        const parsed = Papa.parse(text, {
-          header: true,
-          skipEmptyLines: true,
-        });
-        return parsed.data.map((row) => ({
-          ...row,
-          age: row.age ? Number.parseInt(row.age, 10) : null,
-          votes: row.votes ? Number.parseFloat(row.votes) : null,
-        }));
+      function isWinningOutcome(outcome) {
+        const text = normaliseString(outcome).replace(/\s/g, "");
+        if (!text) return false;
+        return WINNING_KEYWORDS.some((keyword) => text.includes(keyword));
       }
 
+      function ensurePartyName(name) {
+        const text = normaliseString(name);
+        if (!text || text === "-" || /無所属/.test(text)) {
+          return "無所属";
+        }
+        return text;
+      }
+
+      function parseYYYYMMDD(value) {
+        if (!value) return null;
+        const trimmed = normaliseString(value);
+        const match = trimmed.match(/^(\d{4})(\d{2})(\d{2})$/);
+        if (!match) return null;
+        const [, year, month, day] = match;
+        return new Date(
+          Number(year),
+          Number(month) - 1,
+          Number(day)
+        );
+      }
 
       function formatDate(date) {
-        if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "-";
-        const year = date.getFullYear();
-        const month = `${date.getMonth() + 1}`.padStart(2, "0");
-        const day = `${date.getDate()}`.padStart(2, "0");
-        return `${year}-${month}-${day}`;
+        return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(
+          2,
+          "0"
+        )}`;
       }
 
-      function unique(values) {
-        return Array.from(new Set(values.filter((value) => value && value !== "")));
+      function formatYmd(date) {
+        return `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, "0")}${String(date.getDate()).padStart(
+          2,
+          "0"
+        )}`;
       }
 
-      function prepareSearchIndex(elections, candidates) {
-        const index = new Map();
-        for (const election of elections) {
-          index.set(election.election_name, {
-            ...election,
-            election_day_key: election.election_day
-              ? election.election_day.toISOString().slice(0, 10)
-              : null,
-          });
-        }
-        const groupedCandidates = new Map();
-        for (const candidate of candidates) {
-          const { source_file } = candidate;
-          if (!source_file) continue;
-          const [name, dateKey] = source_file.split("_");
-          const electionKey = `${name}_${dateKey}`;
-          if (!groupedCandidates.has(electionKey)) {
-            groupedCandidates.set(electionKey, []);
+      async function loadElectionSummary() {
+        const text = await fetch(DATA_PATH.elections).then((response) => {
+          if (!response.ok) {
+            throw new Error("election_summary.csv の取得に失敗しました");
           }
-          groupedCandidates.get(electionKey).push(candidate);
+          return response.text();
+        });
+        const parsed = Papa.parse(text, {
+          header: true,
+          dynamicTyping: false,
+          skipEmptyLines: true,
+        });
+        return parsed.data
+          .map((row) => ({
+            election_name: normaliseString(row.election_name),
+            notice_date: row.notice_date ? new Date(row.notice_date) : null,
+            election_day: row.election_day ? new Date(row.election_day) : null,
+            seats: Number(row.seats) || null,
+            candidate_count: Number(row.candidate_count) || null,
+            registered_voters: Number(row.registered_voters) || null,
+            note: normaliseString(row.note),
+          }))
+          .filter((row) => row.election_name && row.election_day instanceof Date && !Number.isNaN(row.election_day));
+      }
+
+      async function loadCandidateDetails() {
+        const response = await fetch(DATA_PATH.candidates);
+        if (!response.ok) {
+          throw new Error("candidate_details.csv.gz の取得に失敗しました");
         }
-        return { index, groupedCandidates };
+        const buffer = await response.arrayBuffer();
+        const text = new TextDecoder("utf-8").decode(ungzip(new Uint8Array(buffer)));
+        const parsed = Papa.parse(text, {
+          header: true,
+          dynamicTyping: false,
+          skipEmptyLines: true,
+        });
+        return parsed.data.map((row) => {
+          const rawSource = normaliseString(row.source_file);
+          const cleanedSource = rawSource.replace(/\.html$/, "");
+          const match = cleanedSource.match(/^(.*)_(\d{8})$/);
+          const electionKey = match ? normaliseString(match[1]) : cleanedSource;
+          const electionDateCode = match ? match[2] : null;
+          return {
+            candidate_id: row.candidate_id,
+            name: normaliseString(row.name),
+            party: ensurePartyName(row.party),
+            outcome: normaliseString(row.outcome),
+            source_key: electionKey,
+            source_date_code: electionDateCode,
+          };
+        });
       }
 
-      function computeStats(elections, candidates) {
-        const totalCandidates = candidates.length;
-        const uniqueParties = unique(candidates.map((item) => item.party));
-        const competitionRatios = elections
-          .filter((item) => item.candidate_count && item.seats)
-          .map((item) => item.candidate_count / item.seats)
-          .filter((value) => Number.isFinite(value) && value > 0);
-        const avgCompetition =
-          competitionRatios.length === 0
-            ? "-"
-            : (competitionRatios.reduce((sum, value) => sum + value, 0) /
-                competitionRatios.length).toFixed(2);
-        return {
-          elections: elections.length,
-          candidates: totalCandidates,
-          parties: uniqueParties.length,
-          competition: avgCompetition,
-        };
-      }
+      function selectLatestElections(elections) {
+        const now = new Date();
+        const cutoff = new Date(now.getTime() - FOUR_YEARS_MS);
+        const latestByName = new Map();
 
-      function renderSummary(stats) {
-        const formatNumber = (value) =>
-          typeof value === "number" ? value.toLocaleString("ja-JP") : value;
-        document.getElementById("summary-elections").textContent = formatNumber(
-          stats.elections
-        );
-        document.getElementById("summary-candidates").textContent = formatNumber(
-          stats.candidates
-        );
-        document.getElementById("summary-parties").textContent = formatNumber(
-          stats.parties
-        );
-        document.getElementById("summary-competition").textContent =
-          formatNumber(stats.competition);
-      }
-
-      function buildTimelineOption(elections) {
-        const yearly = new Map();
         for (const election of elections) {
           if (!(election.election_day instanceof Date)) continue;
-          const year = election.election_day.getFullYear();
-          yearly.set(year, (yearly.get(year) || 0) + 1);
+          if (election.election_day < cutoff) continue;
+          const existing = latestByName.get(election.election_name);
+          if (!existing || election.election_day > existing.election_day) {
+            latestByName.set(election.election_name, election);
+          }
         }
-        const years = Array.from(yearly.entries()).sort((a, b) => a[0] - b[0]);
-        return {
-          grid: { top: 24, left: 48, right: 24, bottom: 32 },
-          tooltip: { trigger: "axis" },
-          xAxis: {
-            type: "category",
-            data: years.map(([year]) => `${year}年`),
-            axisLabel: { rotate: 0 },
-          },
-          yAxis: {
-            type: "value",
-            name: "選挙件数",
-          },
-          series: [
+
+        return latestByName;
+      }
+
+      function aggregateParties({ latestElections, candidates }) {
+        const latestDateByKey = new Map(
+          Array.from(latestElections.entries()).map(([key, election]) => [
+            key,
             {
-              type: "line",
-              smooth: true,
-              data: years.map(([, count]) => count),
-              areaStyle: { opacity: 0.25 },
-              lineStyle: { width: 3, color: "#2563eb" },
-              symbolSize: 8,
+              date: election.election_day,
+              dateCode: formatYmd(election.election_day),
             },
-          ],
+          ])
+        );
+
+        const partyTotals = new Map();
+        const timelineByDate = new Map(); // dateCode -> Map(party -> count)
+        let totalSeats = 0;
+
+        for (const candidate of candidates) {
+          const keyInfo = latestDateByKey.get(candidate.source_key);
+          if (!keyInfo) continue;
+
+          // 日付コードが取得できない場合は許容しつつ参加させる
+          const candidateDateCode = candidate.source_date_code ?? keyInfo.dateCode;
+          if (candidate.source_date_code && keyInfo.dateCode && candidate.source_date_code !== keyInfo.dateCode) {
+            continue;
+          }
+
+          if (!isWinningOutcome(candidate.outcome)) continue;
+
+          const party = ensurePartyName(candidate.party);
+          const current = partyTotals.get(party) ?? 0;
+          partyTotals.set(party, current + 1);
+          totalSeats += 1;
+
+          if (!timelineByDate.has(candidateDateCode)) {
+            timelineByDate.set(candidateDateCode, new Map());
+          }
+          const dateBucket = timelineByDate.get(candidateDateCode);
+          dateBucket.set(party, (dateBucket.get(party) ?? 0) + 1);
+        }
+
+        const sortedDates = Array.from(timelineByDate.keys())
+          .filter(Boolean)
+          .sort((a, b) => a.localeCompare(b));
+        const partiesBySize = Array.from(partyTotals.entries())
+          .sort((a, b) => b[1] - a[1])
+          .map(([party]) => party);
+
+        return {
+          totalSeats,
+          partyTotals,
+          timelineByDate,
+          sortedDates,
+          orderedParties: partiesBySize,
         };
       }
 
-      function renderTimelineChart(elementId, elections) {
-        const chart = echarts.init(document.getElementById(elementId));
-        chart.setOption(buildTimelineOption(elections));
-        return chart;
+      function buildChartSeries({ sortedDates, timelineByDate, parties, limit = 8 }) {
+        const targetParties = parties.slice(0, limit);
+        const dateLabels = sortedDates.map((code) => {
+          const parsed = parseYYYYMMDD(code);
+          if (!parsed) return code;
+          return formatDate(parsed);
+        });
+
+        const series = targetParties.map((party) => {
+          let running = 0;
+          const data = sortedDates.map((code) => {
+            const bucket = timelineByDate.get(code);
+            const increment = bucket?.get(party) ?? 0;
+            running += increment;
+            return running;
+          });
+          return {
+            name: party,
+            type: "line",
+            smooth: true,
+            showSymbol: false,
+            emphasis: { focus: "series" },
+            data,
+          };
+        });
+
+        return { dateLabels, series };
       }
 
-      function buildPartySeries(candidates) {
-        const bucket = new Map();
-        for (const candidate of candidates) {
-          const party = candidate.party || "無所属";
-          if (!bucket.has(party)) {
-            bucket.set(party, { total: 0, winners: 0 });
-          }
-          const info = bucket.get(party);
-          info.total += 1;
-          if (candidate.outcome && WINNING_LABELS.has(candidate.outcome)) {
-            info.winners += 1;
-          }
+      function renderSummary({ latestElectionsCount, totalSeats, partyCount, minDate, maxDate }) {
+        const formatNumber = (value) => value.toLocaleString("ja-JP");
+        document.getElementById("summary-municipalities").textContent = formatNumber(latestElectionsCount);
+        document.getElementById("summary-seats").textContent = formatNumber(totalSeats);
+        document.getElementById("summary-parties").textContent = formatNumber(partyCount);
+
+        if (minDate && maxDate) {
+          document.getElementById(
+            "data-range-note"
+          ).textContent = `データ期間: ${formatDate(minDate)} 〜 ${formatDate(maxDate)}（直近4年の選挙を対象）`;
+        } else {
+          document.getElementById("data-range-note").textContent = "";
         }
-        const sortedParties = Array.from(bucket.entries())
-          .sort((a, b) => b[1].total - a[1].total)
-          .slice(0, 18);
-        return sortedParties;
       }
 
-      function buildPartyOption(candidates) {
-        const sortedParties = buildPartySeries(candidates);
-        const categories = sortedParties.map(([party]) => party);
-        return {
-          grid: { top: 32, bottom: 20, left: 120, right: 24 },
+      function renderTopParties(partyTotals, limit = 10) {
+        const container = document.getElementById("top-parties");
+        container.innerHTML = "";
+        const entries = Array.from(partyTotals.entries()).sort((a, b) => b[1] - a[1]);
+        for (const [index, [party, seats]] of entries.entries()) {
+          if (index >= limit) break;
+          const item = document.createElement("li");
+          const name = document.createElement("strong");
+          name.textContent = party;
+          const count = document.createElement("span");
+          count.textContent = `${seats.toLocaleString("ja-JP")} 議席`;
+          item.append(name, count);
+          container.appendChild(item);
+        }
+      }
+
+      function renderPartyTrendChart(containerId, { dateLabels, series }) {
+        const el = document.getElementById(containerId);
+        const chart = echarts.init(el, undefined, { renderer: "svg" });
+        chart.setOption({
           tooltip: {
             trigger: "axis",
-            axisPointer: { type: "shadow" },
+            valueFormatter: (value) => `${Number(value).toLocaleString("ja-JP")} 議席`,
           },
           legend: {
+            type: "scroll",
             top: 0,
-            textStyle: { fontSize: 12 },
+          },
+          grid: {
+            top: 48,
+            left: 48,
+            right: 24,
+            bottom: 32,
           },
           xAxis: {
-            type: "value",
+            type: "category",
+            boundaryGap: false,
+            data: dateLabels,
+            axisLabel: { rotate: 45 },
           },
           yAxis: {
-            type: "category",
-            data: categories,
-            axisLabel: { fontSize: 12 },
+            type: "value",
+            axisLabel: {
+              formatter: (value) => value.toLocaleString("ja-JP"),
+            },
+            splitLine: { show: true, lineStyle: { color: "#e2e8f0" } },
           },
-          series: [
-            {
-              name: "候補者数",
-              type: "bar",
-              stack: "total",
-              emphasis: { focus: "series" },
-              data: sortedParties.map(([, { total, winners }]) => total - winners),
-              itemStyle: { color: "#cbd5f5" },
-            },
-            {
-              name: "当選者数",
-              type: "bar",
-              stack: "total",
-              emphasis: { focus: "series" },
-              data: sortedParties.map(([, { winners }]) => winners),
-              itemStyle: { color: "#2563eb" },
-            },
-          ],
-        };
-      }
-
-      function renderPartyChart(elementId, candidates) {
-        const chart = echarts.init(document.getElementById(elementId));
-        chart.setOption(buildPartyOption(candidates));
-        return chart;
-      }
-
-      function buildDemographicsOption(candidates) {
-        const ageValues = candidates
-          .map((candidate) => {
-            const value =
-              typeof candidate.age === "number"
-                ? candidate.age
-                : Number.parseFloat(candidate.age);
-            return Number.isFinite(value) ? value : null;
-          })
-          .filter((value) => value !== null);
-        const sortedAge = ageValues.slice().sort((a, b) => a - b);
-        const medianAge =
-          sortedAge.length === 0
-            ? null
-            : sortedAge.length % 2 === 1
-            ? sortedAge[(sortedAge.length - 1) / 2]
-            : (sortedAge[sortedAge.length / 2 - 1] +
-                sortedAge[sortedAge.length / 2]) /
-              2;
-        const byGender = candidates.reduce((acc, candidate) => {
-          const gender = candidate.gender || "不明";
-          acc[gender] = (acc[gender] || 0) + 1;
-          return acc;
-        }, {});
-        return {
-          tooltip: { trigger: "item" },
-          legend: { top: 0 },
-          series: [
-            {
-              name: "性別構成",
-              type: "pie",
-              radius: ["40%", "70%"],
-              avoidLabelOverlap: true,
-              label: {
-                formatter: "{b}: {c}人 ({d}%)",
-              },
-              data: Object.entries(byGender).map(([name, value]) => ({
-                name,
-                value,
-              })),
-            },
-          ],
-          graphic:
-            medianAge !== null
-              ? [
-                  {
-                    type: "group",
-                    left: "center",
-                    top: "center",
-                    children: [
-                      {
-                        type: "text",
-                        style: {
-                          text: "年齢の中央値",
-                          fill: "#475569",
-                          fontSize: 12,
-                          fontWeight: 500,
-                          textAlign: "center",
-                        },
-                      },
-                      {
-                        type: "text",
-                        top: 20,
-                        style: {
-                          text: `${medianAge.toFixed(1)}歳`,
-                          fill: "#1e293b",
-                          fontSize: 20,
-                          fontWeight: 600,
-                          textAlign: "center",
-                        },
-                      },
-                    ],
-                  },
-                ]
-              : [],
-        };
-      }
-
-      function renderDemographicsChart(elementId, candidates) {
-        const chart = echarts.init(document.getElementById(elementId));
-        chart.setOption(buildDemographicsOption(candidates));
-        return chart;
-      }
-
-      function renderTable(filteredCandidates, filters) {
-        const resultsBody = document.getElementById("results-body");
-        resultsBody.innerHTML = "";
-        const rowsFragment = document.createDocumentFragment();
-        for (const candidate of filteredCandidates.slice(0, 400)) {
-          const election = filters.findElection(candidate);
-          const tr = document.createElement("tr");
-          const partyLabel = candidate.party || "無所属";
-          const outcome = candidate.outcome || "-";
-          const isWinner = WINNING_LABELS.has(candidate.outcome);
-
-          tr.innerHTML = `
-            <td style="min-width: 220px">${election?.election_name ?? "-"}</td>
-            <td>${formatDate(election?.election_day)}</td>
-            <td>${election?.seats ?? "-"}</td>
-            <td>${election?.candidate_count ?? "-"}</td>
-            <td><span class="pill">${partyLabel}</span></td>
-            <td><span class="badge ${isWinner ? "winner" : ""}">${outcome}</span></td>
-          `;
-          rowsFragment.appendChild(tr);
-        }
-        if (!filteredCandidates.length) {
-          const tr = document.createElement("tr");
-          tr.innerHTML =
-            '<td colspan="6" style="text-align:center; color: var(--text-muted); padding: 40px 16px;">該当する候補者データはありません</td>';
-          rowsFragment.appendChild(tr);
-        }
-        resultsBody.appendChild(rowsFragment);
-        document.getElementById(
-          "results-count"
-        ).textContent = `${filteredCandidates.length.toLocaleString("ja-JP")} 件表示（最大 400 件まで表示）`;
-      }
-
-      function getFilteredCandidates(candidates, filters) {
-        return candidates.filter((candidate) => {
-          if (filters.party && candidate.party !== filters.party) return false;
-          if (!filters.matchesElection(candidate)) return false;
-          return true;
+          series,
         });
-      }
 
-      function initialiseFilters(elections) {
-        return elections.map((election) => {
-          const dateKey = (() => {
-            if (!(election.election_day instanceof Date)) return "";
-            const year = election.election_day.getFullYear();
-            const month = `${election.election_day.getMonth() + 1}`.padStart(2, "0");
-            const day = `${election.election_day.getDate()}`.padStart(2, "0");
-            return `${year}${month}${day}`;
-          })();
-          const sourceKey = `${election.election_name}_${dateKey}`;
-          return { ...election, source_key: sourceKey };
-        });
+        window.addEventListener("resize", () => chart.resize());
       }
 
       async function main() {
-        const [electionsRaw, candidates] = await Promise.all([
-          loadCsv("data/election_summary.csv"),
-          loadCandidateCsv("data/candidate_details.csv.gz"),
+        const [elections, candidates] = await Promise.all([
+          loadElectionSummary(),
+          loadCandidateDetails(),
         ]);
 
-        const elections = initialiseFilters(electionsRaw);
-        const stats = computeStats(elections, candidates);
-        renderSummary(stats);
+        const latestElections = selectLatestElections(elections);
 
-        const partySelect = document.getElementById("party-select");
-        for (const party of unique(candidates.map((candidate) => candidate.party))) {
-          const option = document.createElement("option");
-          option.value = party;
-          option.textContent = party;
-          partySelect.appendChild(option);
+        if (latestElections.size === 0) {
+          throw new Error("直近4年以内に該当する選挙データが見つかりませんでした");
         }
 
-        const timelineChart = renderTimelineChart("timeline-chart", elections);
-        const partyChart = renderPartyChart("party-chart", candidates);
-        const demographicsChart = renderDemographicsChart(
-          "demographics-chart",
-          candidates
-        );
-
-        const filters = {
-          text: "",
-          start: null,
-          end: null,
-          party: "",
-          indexByName: new Map(
-            elections.map((election) => [election.election_name, election])
-          ),
-          indexByKey: new Map(
-            elections.map((election) => [election.source_key, election])
-          ),
-          matchesElection(candidate) {
-            const source = candidate.source_file?.replace(".html", "") ?? "";
-            return this.selectedKeys?.has(source) ?? true;
-          },
-          findElection(candidate) {
-            const sourceKey = candidate.source_file
-              ? candidate.source_file.replace(".html", "")
-              : "";
-            if (this.indexByKey.has(sourceKey)) {
-              return this.indexByKey.get(sourceKey);
-            }
-            const [name] = sourceKey.split("_");
-            return this.indexByName.get(name) ?? null;
-          },
-          selectedKeys: null,
-        };
-
-      function update() {
-        const selectedElections = elections.filter((election) => {
-          const matchesText =
-            filters.text.length === 0 ||
-            election.election_name.includes(filters.text);
-            const matchesStart =
-              !filters.start ||
-              (election.election_day instanceof Date &&
-                election.election_day >= filters.start);
-            const matchesEnd =
-              !filters.end ||
-              (election.election_day instanceof Date &&
-                election.election_day <= filters.end);
-          return matchesText && matchesStart && matchesEnd;
-        });
-        filters.selectedKeys = new Set(
-          selectedElections.map((item) => item.source_key)
-        );
-        const filteredCandidates = getFilteredCandidates(candidates, filters);
-        renderTable(filteredCandidates, filters);
-        timelineChart.setOption(buildTimelineOption(selectedElections), true);
-        partyChart.setOption(buildPartyOption(filteredCandidates), true);
-        demographicsChart.setOption(
-          buildDemographicsOption(filteredCandidates),
-          true
-        );
-      }
-
-      const initialFiltered = getFilteredCandidates(candidates, filters);
-      renderTable(initialFiltered, filters);
-
-        document
-          .getElementById("search-text")
-          .addEventListener("input", (event) => {
-            filters.text = event.target.value.trim();
-            update();
-          });
-        document.getElementById("date-start").addEventListener("change", (event) => {
-          const value = event.target.value;
-          filters.start = value ? new Date(value) : null;
-          update();
-        });
-        document.getElementById("date-end").addEventListener("change", (event) => {
-          const value = event.target.value;
-          filters.end = value ? new Date(value) : null;
-          update();
-        });
-        document.getElementById("party-select").addEventListener("change", (event) => {
-          filters.party = event.target.value;
-          update();
-        });
-        document.getElementById("reset-button").addEventListener("click", () => {
-          filters.text = "";
-          filters.start = null;
-          filters.end = null;
-          filters.party = "";
-          document.getElementById("search-text").value = "";
-          document.getElementById("date-start").value = "";
-          document.getElementById("date-end").value = "";
-          document.getElementById("party-select").value = "";
-          update();
+        const aggregation = aggregateParties({
+          latestElections,
+          candidates,
         });
 
-        window.addEventListener("resize", () => {
-          timelineChart.resize();
-          partyChart.resize();
-          demographicsChart.resize();
+        const latestDates = Array.from(latestElections.values())
+          .map((item) => item.election_day)
+          .sort((a, b) => a - b);
+        const minDate = latestDates[0] ?? null;
+        const maxDate = latestDates[latestDates.length - 1] ?? null;
+
+        renderSummary({
+          latestElectionsCount: latestElections.size,
+          totalSeats: aggregation.totalSeats,
+          partyCount: aggregation.partyTotals.size,
+          minDate,
+          maxDate,
         });
+
+        renderTopParties(aggregation.partyTotals);
+
+        const chartData = buildChartSeries({
+          sortedDates: aggregation.sortedDates,
+          timelineByDate: aggregation.timelineByDate,
+          parties: aggregation.orderedParties,
+        });
+
+        if (chartData.series.length === 0) {
+          throw new Error("政党別の推移データを描画できませんでした");
+        }
+
+        renderPartyTrendChart("party-trend-chart", chartData);
       }
 
       main().catch((error) => {
         console.error(error);
         alert(
           [
-            "データの読み込みに失敗しました。",
+            "データの読み込みまたは集計に失敗しました。",
             error instanceof Error ? error.message : String(error),
-            "GitHub Pages で公開する際は data/ ディレクトリが同じ階層に配置されているか確認してください。",
-          ].join("\\n")
+            "data/ ディレクトリが正しい位置にあるかを確認してください。",
+          ].join("\n")
         );
       });
     </script>
