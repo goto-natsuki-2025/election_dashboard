@@ -129,10 +129,27 @@
         gap: 16px;
       }
 
+      .filters input,
+      .filters select,
+      .filters button {
+        width: 100%;
+        max-width: 100%;
+      }
+
       .filter-group {
         display: flex;
         flex-direction: column;
         gap: 8px;
+      }
+
+      .date-range {
+        display: flex;
+        gap: 10px;
+      }
+
+      .date-range > * {
+        flex: 1;
+        min-width: 0;
       }
 
       label {
@@ -281,7 +298,7 @@
           </div>
           <div class="filter-group">
             <label>投票日レンジ</label>
-            <div style="display: flex; gap: 10px">
+            <div class="date-range">
               <input id="date-start" type="date" />
               <input id="date-end" type="date" />
             </div>
