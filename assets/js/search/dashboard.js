@@ -462,4 +462,8 @@ export function initElectionSearchDashboard({ elections, candidates }) {
 
   window.addEventListener("resize", resizeCharts);
   update();
+
+  return {
+    resize: () => resizeCharts(),
+  };
 }
