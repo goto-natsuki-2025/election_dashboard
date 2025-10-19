@@ -8,7 +8,7 @@ const WINNING_LABELS = new Set([
   "\u5f53\u305b\u3093",
   "\u518d\u9078",
 ]);
-const MAX_TABLE_ROWS = 400;
+const MAX_TABLE_ROWS = 30;
 
 const TEXT = {
   yearSuffix: "\u5e74",
