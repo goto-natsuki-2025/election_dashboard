@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ja">
   <head>
     <meta charset="utf-8" />
@@ -267,7 +267,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
-    <script type="module">
+            <script type="module">
       import { ungzip } from "https://cdn.jsdelivr.net/npm/pako@2.1.0/+esm";
 
       const DATA_PATH = {
@@ -276,7 +276,6 @@
       };
 
       const WINNING_KEYWORDS = ["当選", "繰上当選", "繰り上げ当選", "信任", "補選当選"];
-      const FOUR_YEARS_MS = 1000 * 60 * 60 * 24 * 365 * 4;
       const charts = [];
 
       function normaliseString(value) {
@@ -291,7 +290,7 @@
 
       function ensurePartyName(name) {
         const text = normaliseString(name);
-        if (!text || text === "-" || /無所属/.test(text)) {
+        if (!text || text === "-" || text.includes("無所属")) {
           return "無所属";
         }
         return text;
@@ -303,25 +302,15 @@
         const match = trimmed.match(/^(\d{4})(\d{2})(\d{2})$/);
         if (!match) return null;
         const [, year, month, day] = match;
-        return new Date(
-          Number(year),
-          Number(month) - 1,
-          Number(day)
-        );
+        return new Date(Number(year), Number(month) - 1, Number(day));
       }
 
       function formatDate(date) {
-        return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(
-          2,
-          "0"
-        )}`;
+        return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
       }
 
       function formatYmd(date) {
-        return `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, "0")}${String(date.getDate()).padStart(
-          2,
-          "0"
-        )}`;
+        return `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, "0")}${String(date.getDate()).padStart(2, "0")}`;
       }
 
       async function loadElectionSummary() {
@@ -346,10 +335,30 @@
             registered_voters: Number(row.registered_voters) || null,
             note: normaliseString(row.note),
           }))
-          .filter((row) => row.election_name && row.election_day instanceof Date && !Number.isNaN(row.election_day));
+          .filter(
+            (row) =>
+              row.election_name &&
+              row.election_day instanceof Date &&
+              !Number.isNaN(row.election_day.getTime())
+          );
       }
 
-      async function loadCandidateDetails() {
+      function buildSummaryIndex(elections) {
+        const index = new Map();
+        for (const election of elections) {
+          const key = election.election_name;
+          if (!index.has(key)) {
+            index.set(key, []);
+          }
+          index.get(key).push(election);
+        }
+        for (const list of index.values()) {
+          list.sort((a, b) => b.election_day - a.election_day);
+        }
+        return index;
+      }
+
+      async function loadCandidateDetails(summaryIndex) {
         const response = await fetch(DATA_PATH.candidates);
         if (!response.ok) {
           throw new Error("candidate_details.csv.gz の取得に失敗しました");
@@ -367,154 +376,174 @@
           const match = cleanedSource.match(/^(.*)_(\d{8})$/);
           const electionKey = match ? normaliseString(match[1]) : cleanedSource;
           const electionDateCode = match ? match[2] : null;
+          let electionDate = parseYYYYMMDD(electionDateCode);
+
+          if (!electionDate) {
+            const summaryList = summaryIndex.get(electionKey);
+            if (summaryList && summaryList.length > 0) {
+              electionDate = summaryList[0].election_day;
+            }
+          }
+
           return {
-            candidate_id: row.candidate_id,
-            name: normaliseString(row.name),
             party: ensurePartyName(row.party),
             outcome: normaliseString(row.outcome),
             source_key: electionKey,
             source_date_code: electionDateCode,
+            election_date: electionDate,
           };
         });
       }
 
-      function selectLatestElections(elections) {
-        const now = new Date();
-        const cutoff = new Date(now.getTime() - FOUR_YEARS_MS);
-        const latestByName = new Map();
-
-        for (const election of elections) {
-          if (!(election.election_day instanceof Date)) continue;
-          if (election.election_day < cutoff) continue;
-          const existing = latestByName.get(election.election_name);
-          if (!existing || election.election_day > existing.election_day) {
-            latestByName.set(election.election_name, election);
-          }
-        }
-
-        return latestByName;
-      }
-
-      function aggregateParties({ latestElections, candidates }) {
-        const latestDateByKey = new Map(
-          Array.from(latestElections.entries()).map(([key, election]) => [
-            key,
-            {
-              date: election.election_day,
-              dateCode: formatYmd(election.election_day),
-            },
-          ])
-        );
-
-        const partyTotals = new Map();
-        const timelineByDate = new Map(); // dateCode -> Map(party -> count)
-        let totalSeats = 0;
+      function buildElectionEvents(candidates, { startDate = null, endDate = null } = {}) {
+        const eventsMap = new Map();
+        const municipalitySet = new Set();
 
         for (const candidate of candidates) {
-          const keyInfo = latestDateByKey.get(candidate.source_key);
-          if (!keyInfo) continue;
+          const electionDate = candidate.election_date;
+          if (!(electionDate instanceof Date) || Number.isNaN(electionDate?.getTime())) {
+            continue;
+          }
+          if (startDate && electionDate < startDate) continue;
+          if (endDate && electionDate > endDate) continue;
 
-          // 日付コードが取得できない場合は許容しつつ参加させる
-          const candidateDateCode = candidate.source_date_code ?? keyInfo.dateCode;
-          if (candidate.source_date_code && keyInfo.dateCode && candidate.source_date_code !== keyInfo.dateCode) {
+          municipalitySet.add(candidate.source_key);
+
+          const dateCode = formatYmd(electionDate);
+          const eventId = `${candidate.source_key}|${dateCode}`;
+
+          let event = eventsMap.get(eventId);
+          if (!event) {
+            event = {
+              key: candidate.source_key,
+              date: electionDate,
+              dateCode,
+              winners: new Map(),
+            };
+            eventsMap.set(eventId, event);
+          }
+
+          if (!isWinningOutcome(candidate.outcome)) {
             continue;
           }
 
-          if (!isWinningOutcome(candidate.outcome)) continue;
-
-          const party = ensurePartyName(candidate.party);
-          const current = partyTotals.get(party) ?? 0;
-          partyTotals.set(party, current + 1);
-          totalSeats += 1;
-
-          if (!timelineByDate.has(candidateDateCode)) {
-            timelineByDate.set(candidateDateCode, new Map());
-          }
-          const dateBucket = timelineByDate.get(candidateDateCode);
-          dateBucket.set(party, (dateBucket.get(party) ?? 0) + 1);
+          const party = candidate.party;
+          event.winners.set(party, (event.winners.get(party) ?? 0) + 1);
         }
 
-        const sortedDates = Array.from(timelineByDate.keys())
-          .filter(Boolean)
-          .sort((a, b) => a.localeCompare(b));
-        const partiesBySize = Array.from(partyTotals.entries())
-          .sort((a, b) => b[1] - a[1])
-          .map(([party]) => party);
+        const events = Array.from(eventsMap.values()).filter((event) => event.winners.size > 0);
+        return { events, municipalityCount: municipalitySet.size };
+      }
+
+      function buildPartyTimeline(events, { topN = 8 } = {}) {
+        const byDate = new Map();
+
+        for (const event of events) {
+          const { date, dateCode, winners } = event;
+          let bucket = byDate.get(dateCode);
+          if (!bucket) {
+            bucket = { date, counts: new Map() };
+            byDate.set(dateCode, bucket);
+          }
+          for (const [party, seats] of winners.entries()) {
+            bucket.counts.set(party, (bucket.counts.get(party) ?? 0) + seats);
+          }
+        }
+
+        const sortedBuckets = Array.from(byDate.values()).sort((a, b) => a.date - b.date);
+        const partiesSet = new Set();
+        const snapshots = [];
+        const cumulative = new Map();
+        const dateLabels = [];
+
+        for (const bucket of sortedBuckets) {
+          for (const [party, seats] of bucket.counts.entries()) {
+            partiesSet.add(party);
+            cumulative.set(party, (cumulative.get(party) ?? 0) + seats);
+          }
+
+          const snapshot = {};
+          for (const party of partiesSet) {
+            snapshot[party] = cumulative.get(party) ?? 0;
+          }
+          snapshots.push(snapshot);
+          dateLabels.push(formatDate(bucket.date));
+        }
+
+        const partiesOrdered = Array.from(partiesSet).sort((a, b) => {
+          const lastSnapshot = snapshots[snapshots.length - 1] ?? {};
+          const aVal = lastSnapshot[a] ?? 0;
+          const bVal = lastSnapshot[b] ?? 0;
+          return bVal - aVal;
+        });
+
+        const totals = new Map();
+        const sparklineValues = new Map();
+        for (const party of partiesOrdered) {
+          const values = snapshots.map((snapshot) => snapshot[party] ?? 0);
+          sparklineValues.set(party, values);
+          totals.set(party, values.length ? values[values.length - 1] : 0);
+        }
+
+        const totalSeats = Array.from(totals.values()).reduce((sum, value) => sum + value, 0);
+        const minDate = sortedBuckets.length ? sortedBuckets[0].date : null;
+        const maxDate = sortedBuckets.length ? sortedBuckets[sortedBuckets.length - 1].date : null;
+
+        const limitedParties = partiesOrdered.slice(0, topN);
+        const series = limitedParties.map((party) => ({
+          name: party,
+          type: "line",
+          smooth: true,
+          showSymbol: false,
+          emphasis: { focus: "series" },
+          data: sparklineValues.get(party),
+        }));
 
         return {
+          dateLabels,
+          series,
+          parties: partiesOrdered,
+          totals,
+          sparklineValues,
           totalSeats,
-          partyTotals,
-          timelineByDate,
-          sortedDates,
-          orderedParties: partiesBySize,
+          minDate,
+          maxDate,
         };
       }
 
-      function buildChartSeries({ sortedDates, timelineByDate, parties, limit = 8 }) {
-        const targetParties = parties.slice(0, limit);
-        const dateLabels = sortedDates.map((code) => {
-          const parsed = parseYYYYMMDD(code);
-          if (!parsed) return code;
-          return formatDate(parsed);
-        });
-
-        const series = targetParties.map((party) => {
-          let running = 0;
-          const data = sortedDates.map((code) => {
-            const bucket = timelineByDate.get(code);
-            const increment = bucket?.get(party) ?? 0;
-            running += increment;
-            return running;
-          });
-          return {
-            name: party,
-            type: "line",
-            smooth: true,
-            showSymbol: false,
-            emphasis: { focus: "series" },
-            data,
-          };
-        });
-
-        return { dateLabels, series };
-      }
-
-      function renderSummary({ latestElectionsCount, totalSeats, partyCount, minDate, maxDate }) {
+      function renderSummary({ municipalityCount, totalSeats, partyCount, minDate, maxDate }) {
         const formatNumber = (value) => value.toLocaleString("ja-JP");
-        document.getElementById("summary-municipalities").textContent = formatNumber(latestElectionsCount);
+        document.getElementById("summary-municipalities").textContent = formatNumber(municipalityCount);
         document.getElementById("summary-seats").textContent = formatNumber(totalSeats);
         document.getElementById("summary-parties").textContent = formatNumber(partyCount);
 
         if (minDate && maxDate) {
-          document.getElementById(
-            "data-range-note"
-          ).textContent = `データ期間: ${formatDate(minDate)} 〜 ${formatDate(maxDate)}（直近4年の選挙を対象）`;
+          const note = `データ期間: ${formatDate(minDate)} 〜 ${formatDate(maxDate)}（直近の選挙を集計）`;
+          document.getElementById("data-range-note").textContent = note;
         } else {
           document.getElementById("data-range-note").textContent = "";
         }
       }
 
-      function renderPartyHighlights(aggregation, chartData, limit = 6) {
+      function renderPartyHighlights(timeline, limit = 6) {
         const container = document.getElementById("party-metric-grid");
         container.innerHTML = "";
 
-        if (!chartData || chartData.series.length === 0) {
+        const parties = timeline.parties.slice(0, limit);
+        if (parties.length === 0) {
           container.textContent = "表示できるデータがありません。";
           return;
         }
 
-        const entries = chartData.series.slice(0, limit);
-        const dateLabels = chartData.dateLabels;
-
-        for (const [index, seriesItem] of entries.entries()) {
-          const party = seriesItem.name;
-          const seats = aggregation.partyTotals.get(party) ?? 0;
-          const values = seriesItem.data;
+        parties.forEach((party, index) => {
+          const seats = timeline.totals.get(party) ?? 0;
+          const values = timeline.sparklineValues.get(party) ?? [];
 
           const card = document.createElement("article");
           card.className = "party-metric";
 
           const header = document.createElement("header");
+
           const title = document.createElement("h3");
           title.textContent = `${index + 1}. ${party}`;
 
@@ -525,7 +554,7 @@
           total.append(unit);
 
           const note = document.createElement("small");
-          note.textContent = "直近4年の累積推移";
+          note.textContent = "累積推移";
 
           header.append(title, total, note);
 
@@ -537,11 +566,11 @@
           container.appendChild(card);
 
           if (values.some((value) => Number(value) > 0)) {
-            renderSparklineChart(chartContainer, dateLabels, values);
+            renderSparklineChart(chartContainer, timeline.dateLabels, values);
           } else {
             renderNoDataPlaceholder(chartContainer);
           }
-        }
+        });
       }
 
       function renderSparklineChart(element, labels, values) {
@@ -591,7 +620,7 @@
         element.style.fontSize = "13px";
       }
 
-      function renderPartyTrendChart(containerId, { dateLabels, series }) {
+      function renderPartyTrendChart(containerId, timeline) {
         const el = document.getElementById(containerId);
         const chart = echarts.init(el, undefined, { renderer: "svg" });
         charts.push(chart);
@@ -613,7 +642,7 @@
           xAxis: {
             type: "category",
             boundaryGap: false,
-            data: dateLabels,
+            data: timeline.dateLabels,
             axisLabel: { rotate: 45 },
           },
           yAxis: {
@@ -623,7 +652,7 @@
             },
             splitLine: { show: true, lineStyle: { color: "#e2e8f0" } },
           },
-          series,
+          series: timeline.series,
         });
       }
 
@@ -634,60 +663,42 @@
       });
 
       async function main() {
-        const [elections, candidates] = await Promise.all([
-          loadElectionSummary(),
-          loadCandidateDetails(),
-        ]);
+        const elections = await loadElectionSummary();
+        const summaryIndex = buildSummaryIndex(elections);
+        const candidates = await loadCandidateDetails(summaryIndex);
 
-        const latestElections = selectLatestElections(elections);
-
-        if (latestElections.size === 0) {
-          throw new Error("直近4年以内に該当する選挙データが見つかりませんでした");
+        const { events, municipalityCount } = buildElectionEvents(candidates);
+        if (events.length === 0) {
+          throw new Error("集計対象の選挙データが見つかりませんでした");
         }
 
-        const aggregation = aggregateParties({
-          latestElections,
-          candidates,
-        });
-
-        const latestDates = Array.from(latestElections.values())
-          .map((item) => item.election_day)
-          .sort((a, b) => a - b);
-        const minDate = latestDates[0] ?? null;
-        const maxDate = latestDates[latestDates.length - 1] ?? null;
+        const timeline = buildPartyTimeline(events, { topN: 8 });
+        if (timeline.series.length === 0) {
+          throw new Error("政党別の推移を作成できるデータが不足しています");
+        }
 
         renderSummary({
-          latestElectionsCount: latestElections.size,
-          totalSeats: aggregation.totalSeats,
-          partyCount: aggregation.partyTotals.size,
-          minDate,
-          maxDate,
+          municipalityCount,
+          totalSeats: timeline.totalSeats,
+          partyCount: timeline.parties.length,
+          minDate: timeline.minDate,
+          maxDate: timeline.maxDate,
         });
 
-        const chartData = buildChartSeries({
-          sortedDates: aggregation.sortedDates,
-          timelineByDate: aggregation.timelineByDate,
-          parties: aggregation.orderedParties,
-        });
-
-        if (chartData.series.length === 0) {
-          throw new Error("政党別の推移データを描画できませんでした");
-        }
-
-        renderPartyHighlights(aggregation, chartData);
-        renderPartyTrendChart("party-trend-chart", chartData);
+        renderPartyHighlights(timeline, 6);
+        renderPartyTrendChart("party-trend-chart", timeline);
       }
 
       main().catch((error) => {
         console.error(error);
-        alert(
-          [
-            "データの読み込みまたは集計に失敗しました。",
-            error instanceof Error ? error.message : String(error),
-            "data/ ディレクトリが正しい位置にあるかを確認してください。",
-          ].join("\n")
-        );
+        alert([
+          "データの読み込みまたは集計に失敗しました。",
+          error instanceof Error ? error.message : String(error),
+          "data/ ディレクトリが正しい位置にあるか確認してください。",
+        ].join("\n"));
       });
     </script>
   </body>
 </html>
+
+
