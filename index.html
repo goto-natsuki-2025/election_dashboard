@@ -76,6 +76,10 @@
         gap: clamp(20px, 3vw, 36px);
       }
 
+      .layout > .card {
+        align-self: start;
+      }
+
       @media (max-width: 1080px) {
         .layout {
           grid-template-columns: 1fr;
@@ -126,13 +130,31 @@
 
       .filters {
         display: grid;
-        gap: 16px;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 12px;
+      }
+
+      .filters input,
+      .filters select,
+      .filters button {
+        width: 100%;
+        max-width: 100%;
       }
 
       .filter-group {
         display: flex;
         flex-direction: column;
+        gap: 6px;
+      }
+
+      .date-range {
+        display: flex;
         gap: 8px;
+      }
+
+      .date-range > * {
+        flex: 1;
+        min-width: 0;
       }
 
       label {
@@ -237,7 +259,7 @@
   </head>
   <body>
     <header>
-      <h1>選挙集図盤のテスト</h1>
+      <h1>選挙集図盤</h1>
       <p>
         GitHub Pages 上で静的公開された CSV / Parquet データをブラウザ内で集計し、選挙の概況と候補者動向を可視化します。
       </p>
@@ -281,7 +303,7 @@
           </div>
           <div class="filter-group">
             <label>投票日レンジ</label>
-            <div style="display: flex; gap: 10px">
+            <div class="date-range">
               <input id="date-start" type="date" />
               <input id="date-end" type="date" />
             </div>
@@ -297,7 +319,6 @@
               id="reset-button"
               type="button"
               style="
-                margin-top: 8px;
                 padding: 10px 16px;
                 border-radius: 999px;
                 border: none;
