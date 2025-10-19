@@ -131,27 +131,61 @@
         font-size: 14px;
       }
 
-      .top-parties {
+      .party-metric-grid {
         display: grid;
-        gap: 8px;
-        margin: 0;
-        padding: 0;
-        list-style: none;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 16px;
       }
 
-      .top-parties li {
+      .party-metric {
         display: flex;
-        align-items: center;
-        justify-content: space-between;
-        background: var(--accent-soft);
-        border-radius: 12px;
-        padding: 12px 16px;
-        font-weight: 500;
+        gap: 16px;
+        padding: 16px;
+        border-radius: 14px;
+        background: rgba(37, 99, 235, 0.08);
+        align-items: stretch;
       }
 
-      .top-parties span {
+      .party-metric-info {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        min-width: 160px;
+      }
+
+      .party-metric-info h3 {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 600;
+        color: var(--text);
+      }
+
+      .party-metric-info strong {
+        font-size: 22px;
+        font-weight: 600;
+        color: var(--accent-strong);
+      }
+
+      .party-metric-info small {
+        font-size: 12px;
         color: var(--text-muted);
-        font-size: 13px;
+      }
+
+      .party-metric-chart {
+        flex: 1;
+        min-height: 120px;
+      }
+
+      @media (max-width: 720px) {
+        .party-metric {
+          flex-direction: column;
+        }
+        .party-metric-info {
+          min-width: auto;
+        }
+        .party-metric-chart {
+          min-height: 160px;
+        }
       }
 
       .chart {
@@ -199,7 +233,7 @@
         <p class="description">
           最新選挙で当選した議員を政党・会派ごとに集計したものです。上位勢力の規模感を俯瞰できます。
         </p>
-        <ol class="top-parties" id="top-parties"></ol>
+        <div class="party-metric-grid" id="party-metric-grid" aria-live="polite"></div>
       </section>
 
       <section class="card">
@@ -225,6 +259,7 @@
 
       const WINNING_KEYWORDS = ["当選", "繰上当選", "繰り上げ当選", "信任", "補選当選"];
       const FOUR_YEARS_MS = 1000 * 60 * 60 * 24 * 365 * 4;
+      const charts = [];
 
       function normaliseString(value) {
         return (value ?? "").toString().trim();
@@ -441,25 +476,102 @@
         }
       }
 
-      function renderTopParties(partyTotals, limit = 10) {
-        const container = document.getElementById("top-parties");
+      function renderPartyHighlights(aggregation, chartData, limit = 6) {
+        const container = document.getElementById("party-metric-grid");
         container.innerHTML = "";
-        const entries = Array.from(partyTotals.entries()).sort((a, b) => b[1] - a[1]);
-        for (const [index, [party, seats]] of entries.entries()) {
-          if (index >= limit) break;
-          const item = document.createElement("li");
-          const name = document.createElement("strong");
-          name.textContent = party;
-          const count = document.createElement("span");
-          count.textContent = `${seats.toLocaleString("ja-JP")} 議席`;
-          item.append(name, count);
-          container.appendChild(item);
+
+        if (!chartData || chartData.series.length === 0) {
+          container.textContent = "表示できるデータがありません。";
+          return;
         }
+
+        const entries = chartData.series.slice(0, limit);
+        const dateLabels = chartData.dateLabels;
+
+        for (const [index, seriesItem] of entries.entries()) {
+          const party = seriesItem.name;
+          const seats = aggregation.partyTotals.get(party) ?? 0;
+          const values = seriesItem.data;
+
+          const card = document.createElement("article");
+          card.className = "party-metric";
+
+          const info = document.createElement("div");
+          info.className = "party-metric-info";
+
+          const heading = document.createElement("h3");
+          heading.textContent = `${index + 1}. ${party}`;
+
+          const count = document.createElement("strong");
+          count.textContent = `${seats.toLocaleString("ja-JP")} 議席`;
+
+          const note = document.createElement("small");
+          note.textContent = "直近4年の累積推移";
+
+          info.append(heading, count, note);
+
+          const chartContainer = document.createElement("div");
+          chartContainer.className = "party-metric-chart";
+          chartContainer.id = `party-sparkline-${index}`;
+
+          card.append(info, chartContainer);
+          container.appendChild(card);
+
+          if (values.some((value) => Number(value) > 0)) {
+            renderSparklineChart(chartContainer, dateLabels, values);
+          } else {
+            chartContainer.textContent = "データなし";
+            chartContainer.style.display = "flex";
+            chartContainer.style.alignItems = "center";
+            chartContainer.style.justifyContent = "center";
+            chartContainer.style.color = "var(--text-muted)";
+            chartContainer.style.fontSize = "12px";
+          }
+        }
+      }
+
+      function renderSparklineChart(element, labels, values) {
+        const chart = echarts.init(element, undefined, { renderer: "svg" });
+        charts.push(chart);
+        chart.setOption({
+          grid: { top: 8, bottom: 6, left: 6, right: 6 },
+          tooltip: {
+            trigger: "axis",
+            valueFormatter: (value) => `${Number(value).toLocaleString("ja-JP")} 議席`,
+            axisPointer: { type: "line" },
+          },
+          xAxis: {
+            type: "category",
+            boundaryGap: false,
+            data: labels,
+            axisLine: { show: false },
+            axisTick: { show: false },
+            axisLabel: { show: false },
+          },
+          yAxis: {
+            type: "value",
+            axisLine: { show: false },
+            axisTick: { show: false },
+            axisLabel: { show: false },
+            splitLine: { show: false },
+          },
+          series: [
+            {
+              type: "line",
+              data: values,
+              smooth: true,
+              showSymbol: false,
+              lineStyle: { width: 2, color: "#2563eb" },
+              areaStyle: { opacity: 0.18, color: "#93c5fd" },
+            },
+          ],
+        });
       }
 
       function renderPartyTrendChart(containerId, { dateLabels, series }) {
         const el = document.getElementById(containerId);
         const chart = echarts.init(el, undefined, { renderer: "svg" });
+        charts.push(chart);
         chart.setOption({
           tooltip: {
             trigger: "axis",
@@ -490,9 +602,13 @@
           },
           series,
         });
-
-        window.addEventListener("resize", () => chart.resize());
       }
+
+      window.addEventListener("resize", () => {
+        for (const chart of charts) {
+          chart.resize();
+        }
+      });
 
       async function main() {
         const [elections, candidates] = await Promise.all([
@@ -525,8 +641,6 @@
           maxDate,
         });
 
-        renderTopParties(aggregation.partyTotals);
-
         const chartData = buildChartSeries({
           sortedDates: aggregation.sortedDates,
           timelineByDate: aggregation.timelineByDate,
@@ -537,6 +651,7 @@
           throw new Error("政党別の推移データを描画できませんでした");
         }
 
+        renderPartyHighlights(aggregation, chartData);
         renderPartyTrendChart("party-trend-chart", chartData);
       }
 
