@@ -138,53 +138,71 @@
       }
 
       .party-metric {
-        display: flex;
-        gap: 16px;
-        padding: 16px;
-        border-radius: 14px;
         background: rgba(37, 99, 235, 0.08);
-        align-items: stretch;
-      }
-
-      .party-metric-info {
+        border-radius: 14px;
+        padding: 18px;
         display: flex;
         flex-direction: column;
-        gap: 6px;
-        min-width: 160px;
+        gap: 12px;
       }
 
-      .party-metric-info h3 {
+      .party-metric header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 16px;
+        flex-wrap: wrap;
+      }
+
+      .party-metric header h3 {
         margin: 0;
-        font-size: 16px;
+        font-size: 15px;
         font-weight: 600;
         color: var(--text);
       }
 
-      .party-metric-info strong {
-        font-size: 22px;
+      .party-metric header strong {
+        font-size: 24px;
         font-weight: 600;
         color: var(--accent-strong);
+        display: inline-flex;
+        align-items: baseline;
+        gap: 4px;
       }
 
-      .party-metric-info small {
+      .party-metric header strong span {
+        font-size: 13px;
+        color: var(--text-muted);
+        font-weight: 500;
+      }
+
+      .party-metric header small {
         font-size: 12px;
         color: var(--text-muted);
+        flex-basis: 100%;
+        display: block;
+        margin-top: 4px;
       }
 
-      .party-metric-chart {
-        flex: 1;
-        min-height: 120px;
+      .party-metric-canvas {
+        width: 100%;
+        min-height: 140px;
+        position: relative;
+        overflow: hidden;
+        border-radius: 10px;
       }
 
       @media (max-width: 720px) {
-        .party-metric {
+        .party-metric header {
           flex-direction: column;
+          align-items: flex-start;
+          gap: 8px;
         }
-        .party-metric-info {
-          min-width: auto;
+        .party-metric header small {
+          flex-basis: auto;
         }
-        .party-metric-chart {
-          min-height: 160px;
+        .party-metric-canvas {
+          min-height: 180px;
         }
       }
 
@@ -496,36 +514,32 @@
           const card = document.createElement("article");
           card.className = "party-metric";
 
-          const info = document.createElement("div");
-          info.className = "party-metric-info";
+          const header = document.createElement("header");
+          const title = document.createElement("h3");
+          title.textContent = `${index + 1}. ${party}`;
 
-          const heading = document.createElement("h3");
-          heading.textContent = `${index + 1}. ${party}`;
-
-          const count = document.createElement("strong");
-          count.textContent = `${seats.toLocaleString("ja-JP")} 議席`;
+          const total = document.createElement("strong");
+          total.textContent = seats.toLocaleString("ja-JP");
+          const unit = document.createElement("span");
+          unit.textContent = "議席";
+          total.append(unit);
 
           const note = document.createElement("small");
           note.textContent = "直近4年の累積推移";
 
-          info.append(heading, count, note);
+          header.append(title, total, note);
 
           const chartContainer = document.createElement("div");
-          chartContainer.className = "party-metric-chart";
+          chartContainer.className = "party-metric-canvas";
           chartContainer.id = `party-sparkline-${index}`;
 
-          card.append(info, chartContainer);
+          card.append(header, chartContainer);
           container.appendChild(card);
 
           if (values.some((value) => Number(value) > 0)) {
             renderSparklineChart(chartContainer, dateLabels, values);
           } else {
-            chartContainer.textContent = "データなし";
-            chartContainer.style.display = "flex";
-            chartContainer.style.alignItems = "center";
-            chartContainer.style.justifyContent = "center";
-            chartContainer.style.color = "var(--text-muted)";
-            chartContainer.style.fontSize = "12px";
+            renderNoDataPlaceholder(chartContainer);
           }
         }
       }
@@ -566,6 +580,15 @@
             },
           ],
         });
+      }
+
+      function renderNoDataPlaceholder(element) {
+        element.textContent = "データなし";
+        element.style.display = "flex";
+        element.style.alignItems = "center";
+        element.style.justifyContent = "center";
+        element.style.color = "var(--text-muted)";
+        element.style.fontSize = "13px";
       }
 
       function renderPartyTrendChart(containerId, { dateLabels, series }) {
