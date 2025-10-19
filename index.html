@@ -76,6 +76,10 @@
         gap: clamp(20px, 3vw, 36px);
       }
 
+      .layout > .card {
+        align-self: start;
+      }
+
       @media (max-width: 1080px) {
         .layout {
           grid-template-columns: 1fr;
@@ -127,7 +131,7 @@
       .filters {
         display: grid;
         grid-template-columns: minmax(0, 1fr);
-        gap: 16px;
+        gap: 12px;
       }
 
       .filters input,
@@ -140,12 +144,12 @@
       .filter-group {
         display: flex;
         flex-direction: column;
-        gap: 8px;
+        gap: 6px;
       }
 
       .date-range {
         display: flex;
-        gap: 10px;
+        gap: 8px;
       }
 
       .date-range > * {
@@ -315,7 +319,6 @@
               id="reset-button"
               type="button"
               style="
-                margin-top: 8px;
                 padding: 10px 16px;
                 border-radius: 999px;
                 border: none;
