@@ -1,4 +1,4 @@
-export const DATA_PATH = {
+﻿export const DATA_PATH = {
   elections: "data/election_summary.csv",
   candidates: "data/candidate_details.csv.gz",
 };
@@ -13,3 +13,7 @@ export const WINNING_KEYWORDS = [
 ];
 
 export const TERM_YEARS = 4;
+
+export const PARTY_FOUNDATION_DATES = {
+  "\u7acb\u61b2\u6c11\u4e3b\u515a": "2020-09-15",
+};

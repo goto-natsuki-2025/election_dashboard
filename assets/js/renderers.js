@@ -1,3 +1,4 @@
+import { PARTY_FOUNDATION_DATES } from "./constants.js";
 import { formatDate } from "./utils.js";
 
 const charts = [];
@@ -56,10 +57,52 @@ export function renderPartyHighlights(timeline, limit = 6) {
     card.append(header, chartContainer);
     container.appendChild(card);
 
-    if (values.some((value) => Number(value) > 0)) {
-      renderSparklineChart(chartContainer, timeline.dateLabels, values);
-    } else {
+    if (!values.some((value) => Number(value) > 0)) {
       renderNoDataPlaceholder(chartContainer);
+      return;
+    }
+
+    let labels = timeline.dateLabels;
+    let seriesValues = values;
+
+    let startIndex = values.findIndex((value) => Number(value) > 0);
+    if (startIndex < 0) startIndex = 0;
+
+    let foundationIndex = -1;
+    const foundationText = PARTY_FOUNDATION_DATES[party];
+    if (foundationText) {
+      const match = foundationText.match(/^(\d{4})(?:-(\d{2})(?:-(\d{2}))?)?$/);
+      if (match) {
+        const foundationDate = new Date(
+          Number(match[1]),
+          Number(match[2] ?? "01") - 1,
+          Number(match[3] ?? "01"),
+        );
+        if (!Number.isNaN(foundationDate.getTime())) {
+          foundationIndex = timeline.dateLabels.findIndex((label) => {
+            const [year, month, day] = label.split("-").map(Number);
+            return new Date(year, month - 1, day) >= foundationDate;
+          });
+        }
+      }
+    }
+
+    if (foundationIndex >= 0) {
+      startIndex = foundationIndex;
+    }
+
+    if (startIndex > 0) {
+      labels = timeline.dateLabels.slice(startIndex);
+      seriesValues = values.slice(startIndex);
+    }
+
+    if (
+      seriesValues.length === 0 ||
+      !seriesValues.some((value) => Number(value) > 0)
+    ) {
+      renderNoDataPlaceholder(chartContainer);
+    } else {
+      renderSparklineChart(chartContainer, labels, seriesValues);
     }
   });
 }

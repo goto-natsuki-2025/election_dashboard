@@ -1,4 +1,4 @@
-import { TERM_YEARS } from "./constants.js";
+import { TERM_YEARS, PARTY_FOUNDATION_DATES } from "./constants.js";
 import {
   formatDate,
   formatYmd,
@@ -62,6 +62,20 @@ export function buildPartyTimeline(events, { topN = 8, termYears = TERM_YEARS } 
     };
   }
 
+  const foundationDates = new Map();
+  for (const [party, value] of Object.entries(PARTY_FOUNDATION_DATES)) {
+    if (typeof value !== "string") continue;
+    const match = value.trim().match(/^(\d{4})(?:-(\d{2})(?:-(\d{2}))?)?$/);
+    if (!match) continue;
+    const year = Number(match[1]);
+    const month = Number(match[2] ?? "01");
+    const day = Number(match[3] ?? "01");
+    const date = new Date(year, month - 1, day);
+    if (!Number.isNaN(date.getTime())) {
+      foundationDates.set(party, date);
+    }
+  }
+
   const timelineEvents = [];
   const eventsByKey = new Map();
   for (const event of events) {
@@ -116,6 +130,11 @@ export function buildPartyTimeline(events, { topN = 8, termYears = TERM_YEARS } 
   const activeTerms = new Map();
 
   function applyChange(dateCode, date, party, delta) {
+    const foundationDate = foundationDates.get(party);
+    if (foundationDate && date < foundationDate) {
+      return;
+    }
+
     let bucket = changeMap.get(dateCode);
     if (!bucket) {
       bucket = { date, deltas: new Map() };
@@ -138,7 +157,7 @@ export function buildPartyTimeline(events, { topN = 8, termYears = TERM_YEARS } 
       if (!current || current.termId !== event.termId) {
         continue;
       }
-      event.winners.forEach((count, party) => {
+      current.seats.forEach((count, party) => {
         applyChange(event.dateCode, event.date, party, -count);
       });
       activeTerms.delete(event.key);
@@ -154,10 +173,19 @@ export function buildPartyTimeline(events, { topN = 8, termYears = TERM_YEARS } 
 
     const clone = new Map();
     event.winners.forEach((count, party) => {
+      const foundationDate = foundationDates.get(party);
+      if (foundationDate && event.date < foundationDate) {
+        return;
+      }
       applyChange(event.dateCode, event.date, party, count);
       clone.set(party, count);
     });
-    activeTerms.set(event.key, { termId: event.termId, seats: clone });
+
+    if (clone.size > 0) {
+      activeTerms.set(event.key, { termId: event.termId, seats: clone });
+    } else {
+      activeTerms.delete(event.key);
+    }
   }
 
   const sortedChanges = Array.from(changeMap.values())
@@ -195,6 +223,7 @@ export function buildPartyTimeline(events, { topN = 8, termYears = TERM_YEARS } 
     sparklineValues.set(party, []);
   });
 
+  const labelDates = [];
   const dateLabels = [];
   for (const bucket of effectiveChanges) {
     bucket.deltas.forEach((delta, party) => {
@@ -204,8 +233,21 @@ export function buildPartyTimeline(events, { topN = 8, termYears = TERM_YEARS } 
     partiesSet.forEach((party) => {
       sparklineValues.get(party).push(runningTotals.get(party) ?? 0);
     });
+    labelDates.push(bucket.date);
     dateLabels.push(formatDate(bucket.date));
   }
+
+  sparklineValues.forEach((values, party) => {
+    const foundationDate = foundationDates.get(party);
+    if (!foundationDate) return;
+    for (let index = 0; index < values.length; index += 1) {
+      if (labelDates[index] < foundationDate) {
+        values[index] = null;
+      } else {
+        break;
+      }
+    }
+  });
 
   const totals = new Map();
   sparklineValues.forEach((values, party) => {
