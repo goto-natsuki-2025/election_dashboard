@@ -45,6 +45,16 @@
         <button
           type="button"
           class="dashboard-tab"
+          id="tab-compensation"
+          data-view="compensation-dashboard"
+          aria-controls="compensation-dashboard"
+          aria-selected="false"
+        >
+          議員報酬推計
+        </button>
+        <button
+          type="button"
+          class="dashboard-tab"
           id="tab-search"
           data-view="search-dashboard"
           aria-controls="search-dashboard"
@@ -92,6 +102,77 @@
             各自治体の最新選挙日を時系列に並べ、累積議席数の推移を描画しています。折れ線は政党ごとの勢力の伸び縮みを示します（上位会派のみ表示）。
           </p>
           <div id="party-trend-chart" class="chart" aria-label="政党別所属議員数の推移"></div>
+        </section>
+      </section>
+
+      <section
+        id="compensation-dashboard"
+        class="dashboard-view"
+        role="region"
+        aria-labelledby="tab-compensation"
+      >
+        <section class="card">
+          <h2>政党別議員報酬推計</h2>
+          <p class="description" id="compensation-description">
+            2020年時点の議員報酬月額・期末手当水準を用いた推計値です（自治体との突合ができなかったケースは集計に含まれていません）。
+          </p>
+          <div class="summary-grid">
+            <article class="summary-item">
+              <span>推計総額</span>
+              <strong id="comp-summary-total">-</strong>
+              <small id="comp-summary-note"></small>
+            </article>
+            <article class="summary-item">
+              <span>座席数</span>
+              <strong id="comp-summary-seats">-</strong>
+              <small>推計対象となった議員数</small>
+            </article>
+            <article class="summary-item">
+              <span>自治体数</span>
+              <strong id="comp-summary-municipalities">-</strong>
+              <small>突合できた自治体数</small>
+            </article>
+          </div>
+        </section>
+
+        <section class="card">
+          <h3>政党別推計年額（上位10党）</h3>
+          <div
+            id="compensation-bar-chart"
+            class="chart compensation-chart"
+            aria-label="政党別推計年額（上位10党）"
+          ></div>
+        </section>
+
+        <section class="card">
+          <h3>年別推移（推計上位党）</h3>
+          <div
+            id="compensation-trend-chart"
+            class="chart compensation-chart"
+            aria-label="年別推移（推計上位党）"
+          ></div>
+        </section>
+
+        <section class="card">
+          <h3>政党別推計年額ランキング</h3>
+          <p class="description">
+            推計年額は、自治体別に算出した年額（議員報酬月額×(12 + 期末手当率の合計/100)）に当選議員数を掛けて集計しています。
+          </p>
+          <div class="compensation-table-wrapper">
+            <table class="search-table">
+              <thead>
+                <tr>
+                  <th scope="col">順位</th>
+                  <th scope="col">政党</th>
+                  <th scope="col">座席数</th>
+                  <th scope="col">自治体数</th>
+                  <th scope="col">推計年額</th>
+                </tr>
+              </thead>
+              <tbody id="compensation-table-body"></tbody>
+            </table>
+          </div>
+          <p id="compensation-error" class="compensation-error" hidden></p>
         </section>
       </section>
 

@@ -241,6 +241,21 @@
         min-height: 320px;
       }
 
+      .compensation-chart {
+        min-height: 360px;
+      }
+
+      .compensation-table-wrapper {
+        overflow-x: auto;
+        margin-top: 12px;
+      }
+
+      .compensation-error {
+        margin-top: 12px;
+        color: #dc2626;
+        font-size: 14px;
+      }
+
       footer {
         text-align: center;
         color: var(--text-muted);
