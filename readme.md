@@ -19,4 +19,5 @@ https://goto-natsuki-2025.github.io/election_dashboard/
 
 - 選挙データや報酬データを更新した場合は、次のスクリプトで集計ファイルを再生成してください。  
   `python generate_compensation_data.py`  
-  実行後に `data/party_compensation_2020.json` が更新されます。
+  実行後に以下のファイルが更新されます。
+  - `data/party_compensation_2020.csv`（summary/yearly/municipality をまとめた一覧）

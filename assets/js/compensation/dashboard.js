@@ -1,5 +1,5 @@
 const DATA_URL = new URL(
-  "../../../data/party_compensation_2020.json",
+  "../../../data/party_compensation_2020.csv",
   import.meta.url,
 ).toString();
 const TOP_BAR_PARTY_COUNT = 10;
@@ -43,12 +43,76 @@ function formatAxisLabel(value) {
   return `${(value / 1e8).toFixed(1)}${TEXT.billionUnit}`;
 }
 
+function toNumber(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const text = String(value).replace(/,/g, "").trim();
+  if (!text) return null;
+  const number = Number(text);
+  return Number.isFinite(number) ? number : null;
+}
+
 async function loadCompensationData() {
   const response = await fetch(DATA_URL, { cache: "no-cache" });
   if (!response.ok) {
     throw new Error(`Failed to load ${DATA_URL}: ${response.status} ${response.statusText}`);
   }
-  return response.json();
+  const csvText = await response.text();
+  const parsed = Papa.parse(csvText, {
+    header: true,
+    skipEmptyLines: true,
+  });
+
+  const summary = [];
+  const yearly = [];
+  const municipality = [];
+
+  for (const row of parsed.data) {
+    const dataset = String(row.dataset ?? "").trim().toLowerCase();
+    const party = String(row.party ?? "").trim();
+    const year = toNumber(row.year);
+    const seatCount = toNumber(row.seat_count) ?? 0;
+    const municipalityCount = toNumber(row.municipality_count);
+    const totalComp = toNumber(row.total_compensation) ?? 0;
+    const annualComp = toNumber(row.annual_compensation);
+    const prefecture = row.prefecture ? String(row.prefecture).trim() : "";
+    const municipalityName = row.municipality ? String(row.municipality).trim() : "";
+
+    if (dataset === "summary") {
+      summary.push({
+        party,
+        total_compensation: totalComp,
+        seat_count: seatCount,
+        municipality_count: municipalityCount ? Math.round(municipalityCount) : 0,
+      });
+    } else if (dataset === "yearly") {
+      if (year === null) continue;
+      yearly.push({
+        party,
+        year: Math.round(year),
+        seat_count: seatCount,
+        municipality_count: municipalityCount ? Math.round(municipalityCount) : 0,
+        total_compensation: totalComp,
+      });
+    } else if (dataset === "municipality") {
+      if (year === null || !prefecture || !municipalityName) continue;
+      municipality.push({
+        party,
+        year: Math.round(year),
+        prefecture,
+        municipality: municipalityName,
+        seat_count: seatCount,
+        annual_compensation: annualComp ?? 0,
+        total_compensation: totalComp,
+      });
+    }
+  }
+
+  return {
+    source_compensation_year: 2020,
+    party_summary: summary,
+    rows: yearly,
+    municipality_breakdown: municipality,
+  };
 }
 
 function renderSummaryCards(summary, metadata) {
@@ -240,7 +304,7 @@ export async function initCompensationDashboard() {
     if (message) {
       message.hidden = false;
       message.textContent =
-        "議員報酬データの読み込みに失敗しました。データファイルの配置を確認してください。";
+        "議員報酬データ（CSV）の読み込みに失敗しました。データファイルの配置を確認してください。";
     }
   }
 
