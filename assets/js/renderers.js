@@ -146,8 +146,13 @@ export function renderPartyTrendChart(containerId, timeline) {
 function renderSparklineChart(element, labels, values) {
   const chart = echarts.init(element, undefined, { renderer: "svg" });
   charts.push(chart);
+  const labelCount = labels.length;
+  const formatYear = (value) => {
+    if (typeof value !== "string") return "";
+    return value.slice(0, 4);
+  };
   chart.setOption({
-    grid: { top: 8, bottom: 6, left: 6, right: 6 },
+    grid: { top: 8, bottom: 28, left: 28, right: 28 },
     tooltip: {
       trigger: "axis",
       valueFormatter: (value) => `${Number(value).toLocaleString("ja-JP")} 議席`,
@@ -173,7 +178,20 @@ function renderSparklineChart(element, labels, values) {
       data: labels,
       axisLine: { show: false },
       axisTick: { show: false },
-      axisLabel: { show: false },
+      axisLabel: {
+        show: labelCount > 0,
+        color: "#64748b",
+        fontSize: 10,
+        margin: 8,
+        showMinLabel: true,
+        showMaxLabel: true,
+        formatter: (value, index) => {
+          if (index === 0 || index === labelCount - 1) {
+            return formatYear(value);
+          }
+          return "";
+        },
+      },
     },
     yAxis: {
       type: "value",
