@@ -108,6 +108,20 @@ function renderSparklineChart(element, labels, values) {
       trigger: "axis",
       valueFormatter: (value) => `${Number(value).toLocaleString("ja-JP")} 議席`,
       axisPointer: { type: "line" },
+      confine: true,
+      position: (point, params, dom, rect, size) => {
+        const [x, y] = point;
+        const { contentSize, viewSize } = size;
+        const [width, height] = contentSize;
+        const [viewWidth, viewHeight] = viewSize;
+
+        const left = Math.min(Math.max(x - width / 2, 0), viewWidth - width);
+        const topCandidate = y - height - 12;
+        const top =
+          topCandidate >= 0 ? topCandidate : Math.min(y + 12, viewHeight - height);
+
+        return [left, top];
+      },
     },
     xAxis: {
       type: "category",
@@ -134,6 +148,10 @@ function renderSparklineChart(element, labels, values) {
         areaStyle: { opacity: 0.18, color: "#93c5fd" },
       },
     ],
+  });
+
+  requestAnimationFrame(() => {
+    chart.resize();
   });
 }
 
