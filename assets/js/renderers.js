@@ -38,7 +38,11 @@ export function renderPartyHighlights(timeline, limit = 6) {
     title.textContent = party;
 
     const total = document.createElement("strong");
-    total.textContent = seats.toLocaleString("ja-JP");
+    const currentLabel = document.createElement("span");
+    currentLabel.className = "party-metric-current-label";
+    currentLabel.textContent = "現在";
+    total.append(currentLabel);
+    total.append(document.createTextNode(seats.toLocaleString("ja-JP")));
     const unit = document.createElement("span");
     unit.textContent = "議席";
     total.append(unit);
