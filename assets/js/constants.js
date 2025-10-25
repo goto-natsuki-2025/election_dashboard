@@ -16,4 +16,5 @@ export const TERM_YEARS = 4;
 
 export const PARTY_FOUNDATION_DATES = {
   "立憲民主党": "2020-09-15",
+  "日本維新の会": "2015-11-02",
 };
