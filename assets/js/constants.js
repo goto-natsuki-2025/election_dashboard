@@ -4,16 +4,16 @@
 };
 
 export const WINNING_KEYWORDS = [
-  "\u5f53\u9078",
-  "\u88dc\u6b20\u5f53\u9078",
-  "\u7e70\u4e0a\u5f53\u9078",
-  "\u7e70\u308a\u4e0a\u3052\u5f53\u9078",
-  "\u5f53\u305b\u3093",
-  "\u518d\u9078",
+  "当選",
+  "補欠当選",
+  "繰上当選",
+  "繰り上げ当選",
+  "当せん",
+  "再選",
 ];
 
 export const TERM_YEARS = 4;
 
 export const PARTY_FOUNDATION_DATES = {
-  "\u7acb\u61b2\u6c11\u4e3b\u515a": "2020-09-15",
+  "立憲民主党": "2020-09-15",
 };
