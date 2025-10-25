@@ -26,7 +26,7 @@
       }
 
       header {
-        padding: 32px clamp(16px, 4vw, 48px);
+        padding: 8px clamp(16px, 4vw, 48px);
         background: var(--card);
         border-bottom: 1px solid var(--border);
       }
@@ -162,22 +162,21 @@
       .party-metric {
         background: rgba(37, 99, 235, 0.08);
         border-radius: 14px;
-        padding: 18px;
+        padding: 14px 16px;
         display: flex;
         flex-direction: column;
-        gap: 12px;
+        gap: 8px;
       }
 
       .party-metric header {
         display: flex;
         justify-content: space-between;
-        align-items: flex-start;
-        gap: 16px;
+        align-items: center;
+        gap: 10px;
         flex-wrap: wrap;
       }
 
       .party-metric header h3 {
-        margin: 0;
         font-size: 15px;
         font-weight: 600;
         color: var(--text);

@@ -35,7 +35,7 @@ export function renderPartyHighlights(timeline, limit = 6) {
 
     const header = document.createElement("header");
     const title = document.createElement("h3");
-    title.textContent = `${index + 1}. ${party}`;
+    title.textContent = party;
 
     const total = document.createElement("strong");
     total.textContent = seats.toLocaleString("ja-JP");
@@ -43,10 +43,7 @@ export function renderPartyHighlights(timeline, limit = 6) {
     unit.textContent = "議席";
     total.append(unit);
 
-    const note = document.createElement("small");
-    note.textContent = "Active trend";
-
-    header.append(title, total, note);
+    header.append(title, total);
 
     const chartContainer = document.createElement("div");
     chartContainer.className = "party-metric-canvas";
