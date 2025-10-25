@@ -1,3 +1,4 @@
+import { PARTY_FOUNDATION_DATES } from "./constants.js";
 import { formatDate } from "./utils.js";
 
 const charts = [];
@@ -35,18 +36,19 @@ export function renderPartyHighlights(timeline, limit = 6) {
 
     const header = document.createElement("header");
     const title = document.createElement("h3");
-    title.textContent = `${index + 1}. ${party}`;
+    title.textContent = party;
 
     const total = document.createElement("strong");
-    total.textContent = seats.toLocaleString("ja-JP");
+    const currentLabel = document.createElement("span");
+    currentLabel.className = "party-metric-current-label";
+    currentLabel.textContent = "現在";
+    total.append(currentLabel);
+    total.append(document.createTextNode(seats.toLocaleString("ja-JP")));
     const unit = document.createElement("span");
     unit.textContent = "議席";
     total.append(unit);
 
-    const note = document.createElement("small");
-    note.textContent = "Active trend";
-
-    header.append(title, total, note);
+    header.append(title, total);
 
     const chartContainer = document.createElement("div");
     chartContainer.className = "party-metric-canvas";
@@ -55,10 +57,52 @@ export function renderPartyHighlights(timeline, limit = 6) {
     card.append(header, chartContainer);
     container.appendChild(card);
 
-    if (values.some((value) => Number(value) > 0)) {
-      renderSparklineChart(chartContainer, timeline.dateLabels, values);
-    } else {
+    if (!values.some((value) => Number(value) > 0)) {
       renderNoDataPlaceholder(chartContainer);
+      return;
+    }
+
+    let labels = timeline.dateLabels;
+    let seriesValues = values;
+
+    let startIndex = values.findIndex((value) => Number(value) > 0);
+    if (startIndex < 0) startIndex = 0;
+
+    let foundationIndex = -1;
+    const foundationText = PARTY_FOUNDATION_DATES[party];
+    if (foundationText) {
+      const match = foundationText.match(/^(\d{4})(?:-(\d{2})(?:-(\d{2}))?)?$/);
+      if (match) {
+        const foundationDate = new Date(
+          Number(match[1]),
+          Number(match[2] ?? "01") - 1,
+          Number(match[3] ?? "01"),
+        );
+        if (!Number.isNaN(foundationDate.getTime())) {
+          foundationIndex = timeline.dateLabels.findIndex((label) => {
+            const [year, month, day] = label.split("-").map(Number);
+            return new Date(year, month - 1, day) >= foundationDate;
+          });
+        }
+      }
+    }
+
+    if (foundationIndex >= 0) {
+      startIndex = foundationIndex;
+    }
+
+    if (startIndex > 0) {
+      labels = timeline.dateLabels.slice(startIndex);
+      seriesValues = values.slice(startIndex);
+    }
+
+    if (
+      seriesValues.length === 0 ||
+      !seriesValues.some((value) => Number(value) > 0)
+    ) {
+      renderNoDataPlaceholder(chartContainer);
+    } else {
+      renderSparklineChart(chartContainer, labels, seriesValues);
     }
   });
 }
@@ -102,12 +146,31 @@ export function renderPartyTrendChart(containerId, timeline) {
 function renderSparklineChart(element, labels, values) {
   const chart = echarts.init(element, undefined, { renderer: "svg" });
   charts.push(chart);
+  const labelCount = labels.length;
+  const formatYear = (value) => {
+    if (typeof value !== "string") return "";
+    return value.slice(0, 4);
+  };
   chart.setOption({
-    grid: { top: 8, bottom: 6, left: 6, right: 6 },
+    grid: { top: 8, bottom: 28, left: 28, right: 28 },
     tooltip: {
       trigger: "axis",
       valueFormatter: (value) => `${Number(value).toLocaleString("ja-JP")} 議席`,
       axisPointer: { type: "line" },
+      confine: true,
+      position: (point, params, dom, rect, size) => {
+        const [x, y] = point;
+        const { contentSize, viewSize } = size;
+        const [width, height] = contentSize;
+        const [viewWidth, viewHeight] = viewSize;
+
+        const left = Math.min(Math.max(x - width / 2, 0), viewWidth - width);
+        const topCandidate = y - height - 12;
+        const top =
+          topCandidate >= 0 ? topCandidate : Math.min(y + 12, viewHeight - height);
+
+        return [left, top];
+      },
     },
     xAxis: {
       type: "category",
@@ -115,7 +178,20 @@ function renderSparklineChart(element, labels, values) {
       data: labels,
       axisLine: { show: false },
       axisTick: { show: false },
-      axisLabel: { show: false },
+      axisLabel: {
+        show: labelCount > 0,
+        color: "#64748b",
+        fontSize: 10,
+        margin: 8,
+        showMinLabel: true,
+        showMaxLabel: true,
+        formatter: (value, index) => {
+          if (index === 0 || index === labelCount - 1) {
+            return formatYear(value);
+          }
+          return "";
+        },
+      },
     },
     yAxis: {
       type: "value",
@@ -134,6 +210,10 @@ function renderSparklineChart(element, labels, values) {
         areaStyle: { opacity: 0.18, color: "#93c5fd" },
       },
     ],
+  });
+
+  requestAnimationFrame(() => {
+    chart.resize();
   });
 }
 
