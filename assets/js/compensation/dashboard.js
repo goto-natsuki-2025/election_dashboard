@@ -413,12 +413,24 @@ function createTrendChart(elementId, yearlyRows, parties) {
   const partyYearMap = new Map();
   for (const row of yearlyRows) {
     const key = `${row.party}::${row.year}`;
-    partyYearMap.set(key, row.total_compensation ?? 0);
+    partyYearMap.set(key, {
+      total_compensation: row.total_compensation ?? null,
+      seat_count: row.seat_count ?? null,
+    });
   }
   const series = parties.map((party) => {
     const data = years.map((year) => {
       const key = `${party.party}::${year}`;
-      return partyYearMap.get(key) ?? null;
+      const entry = partyYearMap.get(key);
+      if (!entry || entry.total_compensation === null) {
+        return null;
+      }
+      const value = Number(entry.total_compensation);
+      if (!Number.isFinite(value)) return null;
+      return {
+        value,
+        seats: entry.seat_count,
+      };
     });
     return {
       name: party.party,
@@ -432,7 +444,30 @@ function createTrendChart(elementId, yearlyRows, parties) {
       grid: { top: 40, left: 76, right: 24, bottom: 32 },
       tooltip: {
         trigger: "axis",
-        valueFormatter: (value) => formatYenShort(value),
+        formatter: (params) => {
+          if (!Array.isArray(params) || params.length === 0) return "";
+          const heading = params[0]?.axisValueLabel ?? "";
+          const lines = heading ? [heading] : [];
+          for (const item of params) {
+            const dataPoint =
+              item && item.data && typeof item.data === "object" && "value" in item.data
+                ? item.data
+                : null;
+            const rawValue = dataPoint ? dataPoint.value : item?.value;
+            const hasValue =
+              rawValue !== null && rawValue !== undefined && Number.isFinite(Number(rawValue));
+            const valueNumber = hasValue ? Number(rawValue) : null;
+            const valueText = hasValue ? formatYenShort(valueNumber) : "-";
+            const valueMarkup = hasValue ? `<strong>${valueText}</strong>` : valueText;
+            let detail = valueMarkup;
+            const rawSeats = dataPoint ? dataPoint.seats : undefined;
+            if (rawSeats !== null && rawSeats !== undefined && Number.isFinite(Number(rawSeats))) {
+              detail += ` (${formatInteger(Number(rawSeats))}\u8b70\u5e2d)`;
+            }
+            lines.push(`${item.marker}${item.seriesName} ${detail}`);
+          }
+          return lines.join("<br />");
+        },
       },
       legend: {
         type: "scroll",
