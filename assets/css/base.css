@@ -256,6 +256,38 @@
         font-size: 14px;
       }
 
+      .compensation-controls {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin: 12px 0 20px;
+      }
+
+      .compensation-controls label {
+        font-weight: 600;
+        color: var(--text);
+      }
+
+      .compensation-controls .control-group {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .compensation-controls input[type="number"] {
+        width: 90px;
+        padding: 6px 8px;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+      }
+
+      .compensation-controls .help-text {
+        margin: 0;
+        font-size: 12px;
+        color: var(--text-muted);
+      }
+
       footer {
         text-align: center;
         color: var(--text-muted);
