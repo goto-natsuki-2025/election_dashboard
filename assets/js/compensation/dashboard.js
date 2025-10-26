@@ -272,7 +272,7 @@ function renderSummaryCards(summary, metadata) {
   const note = document.getElementById("comp-summary-note");
   if (note) {
     const sourceYear = metadata?.source_compensation_year ?? 2020;
-    note.textContent = `基準年: ${sourceYear}年 / 集計政党数: ${formatInteger(summary.partyCount)}党`;
+    note.textContent = `Baseline year: ${sourceYear} / Parties counted: ${formatInteger(summary.partyCount)}`;
   }
 }
 function createBarChart(elementId, parties, year) {
@@ -321,6 +321,7 @@ function createBarChart(elementId, parties, year) {
       },
       yAxis: {
         type: "category",
+        inverse: true,
         data: categories,
         axisLabel: { interval: 0 },
       },
@@ -538,5 +539,8 @@ export async function initCompensationDashboard() {
     },
   };
 }
+
+
+
 
 
