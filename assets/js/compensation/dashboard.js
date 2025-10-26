@@ -11,9 +11,9 @@ function isMobileDevice() {
   return /android|iphone|ipad|ipod|windows phone|mobile/i.test(userAgent);
 }
 const TEXT = {
-  summaryTitle: "政党別議員報酬推計",
+  summaryTitle: "議員報酬推計",
   summaryDescription:
-    "2020年時点の議員報酬月額・期末手当水準を用いた推計値です（自治体との突合ができなかったケースは集計に含まれていません）。",
+    "2020年時点の議員報酬月額と期末手当水準を基準に、当選議員（補欠当選・繰り上げ当選を含む）の在任月数を掛け合わせた推計値です。報酬データが見つからない自治体は集計に含まれていません。",
   totalLabel: "推計総額",
   seatLabel: "座席数",
   municipalityLabel: "自治体数",
@@ -25,22 +25,26 @@ const TEXT = {
   yenSuffix: "円",
   billionUnit: "億円",
   millionUnit: "百万円",
-};
-function formatYenShort(value) {
+};function formatYenShort(value) {
   if (!Number.isFinite(value)) return "-";
-  if (value >= 1e11) {
-    return `${(value / 1e8).toFixed(1)}${TEXT.billionUnit}`;
-  }
   if (value >= 1e8) {
-    return `${(value / 1e8).toFixed(2)}${TEXT.billionUnit}`;
+    const billions = Math.round(value / 1e8);
+    return `${billions}${TEXT.billionUnit}`;
   }
-  if (value >= 1e7) {
-    return `${Math.round(value / 1e6)}${TEXT.millionUnit}`;
+  if (value >= 1e6) {
+    const millions = Math.round(value / 1e6);
+    return `${millions}${TEXT.millionUnit}`;
   }
-  return `${Math.round(value).toLocaleString("ja-JP")}${TEXT.yenSuffix}`;
+  return `${Math.round(value)}${TEXT.yenSuffix}`;
 }
 function formatAxisLabel(value) {
-  return `${(value / 1e8).toFixed(1)}${TEXT.billionUnit}`;
+  if (!Number.isFinite(value)) return "";
+  const billions = Math.round(value / 1e8);
+  return `${billions}${TEXT.billionUnit}`;
+}
+function formatInteger(value) {
+  if (!Number.isFinite(value)) return "-";
+  return String(Math.round(value));
 }
 function aggregateMunicipalRows(rows) {
   const map = new Map();
@@ -249,20 +253,19 @@ function renderCompensationView(data) {
   renderTable(sortedSummary);
 }
 function renderSummaryCards(summary, metadata) {
-  const formatNumber = (value) => value.toLocaleString("ja-JP");
   document.getElementById("comp-summary-total").textContent = formatYenShort(
     summary.totalCompensation,
   );
-  document.getElementById("comp-summary-seats").textContent = formatNumber(summary.totalSeats);
-  document.getElementById("comp-summary-municipalities").textContent = formatNumber(
+  document.getElementById("comp-summary-seats").textContent = formatInteger(
+    summary.totalSeats,
+  );
+  document.getElementById("comp-summary-municipalities").textContent = formatInteger(
     summary.totalMunicipalities,
   );
   const note = document.getElementById("comp-summary-note");
   if (note) {
     const sourceYear = metadata?.source_compensation_year ?? 2020;
-    note.textContent = `基準年: ${sourceYear}年 / 集計政党: ${summary.partyCount.toLocaleString(
-      "ja-JP",
-    )}党`;
+    note.textContent = `基準年: ${sourceYear}年 / 集計政党数: ${formatInteger(summary.partyCount)}党`;
   }
 }
 function createBarChart(elementId, parties) {
@@ -338,7 +341,7 @@ function createTrendChart(elementId, yearlyRows, parties) {
   });
   chart.setOption(
     {
-      grid: { top: 40, left: 56, right: 24, bottom: 32 },
+      grid: { top: 40, left: 76, right: 24, bottom: 32 },
       tooltip: {
         trigger: "axis",
         valueFormatter: (value) => formatYenShort(value),
@@ -353,7 +356,7 @@ function createTrendChart(elementId, yearlyRows, parties) {
       },
       yAxis: {
         type: "value",
-        axisLabel: { formatter: formatAxisLabel },
+        axisLabel: { formatter: formatAxisLabel, align: "right" },
         splitLine: { show: true, lineStyle: { color: "#e2e8f0" } },
       },
       series,
@@ -379,10 +382,10 @@ function renderTable(rows) {
     partyCell.textContent = row.party || "無所属";
     tr.appendChild(partyCell);
     const seatCell = document.createElement("td");
-    seatCell.textContent = row.seat_count.toLocaleString("ja-JP");
+    seatCell.textContent = row.seat_count;
     tr.appendChild(seatCell);
     const municipalityCell = document.createElement("td");
-    municipalityCell.textContent = row.municipality_count.toLocaleString("ja-JP");
+    municipalityCell.textContent = row.municipality_count;
     tr.appendChild(municipalityCell);
     const valueCell = document.createElement("td");
     valueCell.textContent = formatYenShort(row.total_compensation);
@@ -400,11 +403,11 @@ function updateSpanHelpText(element, viewData) {
     return;
   }
   if (span > 0 && Number.isFinite(viewData?.cutoff_year)) {
-    element.textContent = `${viewData.cutoff_year}年〜${latestYear}年を集計しています（0 を指定すると全期間）。`;
+    element.textContent = `${viewData.cutoff_year}年?${latestYear}年を集計しています（0 を指定すると全期間）。`;
     return;
   }
   if (Number.isFinite(earliestYear)) {
-    element.textContent = `${earliestYear}年〜${latestYear}年を集計しています。0 を指定すると全期間を対象にします。`;
+    element.textContent = `${earliestYear}年?${latestYear}年を集計しています。0 を指定すると全期間を対象にします。`;
   } else {
     element.textContent = "0 を指定すると全期間を対象にします。";
   }
