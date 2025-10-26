@@ -253,7 +253,8 @@ async function loadSeatTerms(candidateCsvText) {
     Papa.parse(candidateCsvText, {
       header: true,
       skipEmptyLines: true,
-      worker: false,
+      worker: true,
+      chunkSize: 1024 * 64,
       step: (results) => {
         const row = results.data;
         if (!row) return;
