@@ -2,8 +2,9 @@
 const TOP_BAR_PARTY_COUNT = 10;
 const TOP_TREND_PARTY_COUNT = 10;
 const TABLE_LIMIT = 20;
-const MOBILE_YEAR_SPAN_DEFAULT = 10;
-const DESKTOP_YEAR_SPAN_DEFAULT = 20;
+const TREND_DEFAULT_SPAN_YEARS = 20;
+const MOBILE_YEAR_SPAN_DEFAULT = 1;
+const DESKTOP_YEAR_SPAN_DEFAULT = 1;
 const charts = [];
 function isMobileDevice() {
   if (typeof navigator === "undefined") return false;
@@ -227,12 +228,44 @@ function deriveCompensationView(rawData, spanYears) {
   const aggregatedMunicipality = aggregateMunicipalRows(filteredMunicipalityRows);
   const partyYearRows = buildPartyYearRowsFromMunicipalRows(aggregatedMunicipality);
   const partySummary = buildPartySummaryFromMunicipalRows(aggregatedMunicipality);
+  let trendCutoffYear = null;
+  let trendSpanYears = null;
+  let trendPartyYearRows = partyYearRows;
+  let trendSummary = partySummary;
+  if (Number.isFinite(effectiveMaxYear)) {
+    const baseMinYear = Number.isFinite(minYear) ? minYear : effectiveMaxYear;
+    const candidateCutoff = effectiveMaxYear - TREND_DEFAULT_SPAN_YEARS + 1;
+    const resolvedCutoff = Number.isFinite(candidateCutoff)
+      ? Math.max(baseMinYear, candidateCutoff)
+      : baseMinYear;
+    if (Number.isFinite(resolvedCutoff)) {
+      trendCutoffYear = resolvedCutoff;
+      const trendMunicipalityRows = rowsForProcessing.filter((row) => {
+        const year = Number(row.year);
+        return (
+          Number.isFinite(year) &&
+          year <= effectiveMaxYear &&
+          (trendCutoffYear === null || year >= trendCutoffYear)
+        );
+      });
+      if (trendMunicipalityRows.length > 0) {
+        const aggregatedTrend = aggregateMunicipalRows(trendMunicipalityRows);
+        trendPartyYearRows = buildPartyYearRowsFromMunicipalRows(aggregatedTrend);
+        trendSummary = buildPartySummaryFromMunicipalRows(aggregatedTrend);
+      }
+      trendSpanYears = effectiveMaxYear - trendCutoffYear + 1;
+    }
+  }
   return {
     source_compensation_year: rawData.source_compensation_year,
     party_summary: partySummary,
     rows: partyYearRows,
     municipality_breakdown: aggregatedMunicipality,
     municipality_terms: filteredTerms,
+    trend_rows: trendPartyYearRows,
+    trend_summary: trendSummary,
+    trend_cutoff_year: trendCutoffYear,
+    trend_span_years: trendSpanYears,
     latest_year: effectiveMaxYear,
     earliest_year: minYear,
     applied_span_years: requestedSpan,
@@ -255,8 +288,17 @@ function renderCompensationView(data) {
     .sort((a, b) => b.total_compensation - a.total_compensation)
     .slice(0, TOP_BAR_PARTY_COUNT);
   createBarChart("compensation-bar-chart", latestYearRows, currentYear);
-  const trendParties = sortedSummary.slice(0, TOP_TREND_PARTY_COUNT);
-  createTrendChart("compensation-trend-chart", data.rows, trendParties);
+  const trendRows =
+    Array.isArray(data.trend_rows) && data.trend_rows.length > 0 ? data.trend_rows : data.rows;
+  const trendSummarySource =
+    Array.isArray(data.trend_summary) && data.trend_summary.length > 0
+      ? data.trend_summary
+      : data.party_summary ?? [];
+  const trendParties = trendSummarySource
+    .slice()
+    .sort((a, b) => b.total_compensation - a.total_compensation)
+    .slice(0, TOP_TREND_PARTY_COUNT);
+  createTrendChart("compensation-trend-chart", trendRows, trendParties);
   renderTable(sortedSummary);
 }
 function renderSummaryCards(summary, metadata) {
@@ -272,7 +314,26 @@ function renderSummaryCards(summary, metadata) {
   const note = document.getElementById("comp-summary-note");
   if (note) {
     const sourceYear = metadata?.source_compensation_year ?? 2020;
-    note.textContent = `Baseline year: ${sourceYear} / Parties counted: ${formatInteger(summary.partyCount)}`;
+    const latestYear =
+      metadata && Number.isFinite(Number(metadata.latest_year))
+        ? Number(metadata.latest_year)
+        : null;
+    const startYearCandidate =
+      metadata && Number.isFinite(Number(metadata.cutoff_year))
+        ? Number(metadata.cutoff_year)
+        : metadata && Number.isFinite(Number(metadata.earliest_year))
+          ? Number(metadata.earliest_year)
+          : null;
+    const spanYears =
+      metadata && Number.isFinite(Number(metadata.applied_span_years))
+        ? Number(metadata.applied_span_years)
+        : 0;
+    const spanText = spanYears > 0 ? `${spanYears}\u5e74\u5206` : "\u5168\u671f\u9593";
+    const rangeText =
+      startYearCandidate !== null && latestYear !== null
+        ? `${startYearCandidate}\u5e74\u301c${latestYear}\u5e74`
+        : "\u671f\u9593\u60c5\u5831\u306a\u3057";
+    note.textContent = `\u57fa\u6e96\u5e74: ${sourceYear}\u5e74 / \u96c6\u8a08\u671f\u9593: ${rangeText} (${spanText}) / \u5bfe\u8c61\u653f\u515a\u6570: ${formatInteger(summary.partyCount)}`;
   }
 }
 function createBarChart(elementId, parties, year) {
@@ -426,17 +487,17 @@ function updateSpanHelpText(element, viewData) {
   const earliestYear = Number(viewData?.earliest_year);
   const span = Number(viewData?.applied_span_years);
   if (!Number.isFinite(latestYear)) {
-    element.textContent = "0 を指定すると全期間を対象にします。";
+    element.textContent = "0を指定すると全期間が対象になります。";
     return;
   }
   if (span > 0 && Number.isFinite(viewData?.cutoff_year)) {
-    element.textContent = `${viewData.cutoff_year}年?${latestYear}年を集計しています（0 を指定すると全期間）。`;
+    element.textContent = `${viewData.cutoff_year}年〜${latestYear}年を集計しています（0を指定すると全期間）。`;
     return;
   }
   if (Number.isFinite(earliestYear)) {
-    element.textContent = `${earliestYear}年?${latestYear}年を集計しています。0 を指定すると全期間を対象にします。`;
+    element.textContent = `${earliestYear}年〜${latestYear}年を集計しています。0を指定すると全期間が対象になります。`;
   } else {
-    element.textContent = "0 を指定すると全期間を対象にします。";
+    element.textContent = "0を指定すると全期間が対象になります。";
   }
 }
 function computeSummary(data) {
