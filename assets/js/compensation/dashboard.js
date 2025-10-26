@@ -1,6 +1,6 @@
 ﻿import { loadCompensationData as loadCompensationDataset } from "./data-loader.js";
 const TOP_BAR_PARTY_COUNT = 10;
-const TOP_TREND_PARTY_COUNT = 5;
+const TOP_TREND_PARTY_COUNT = 10;
 const TABLE_LIMIT = 20;
 const MOBILE_YEAR_SPAN_DEFAULT = 10;
 const DESKTOP_YEAR_SPAN_DEFAULT = 20;
