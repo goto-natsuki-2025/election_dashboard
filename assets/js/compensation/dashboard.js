@@ -246,8 +246,15 @@ function renderCompensationView(data) {
   const sortedSummary = data.party_summary
     .slice()
     .sort((a, b) => b.total_compensation - a.total_compensation);
-  const topBarParties = sortedSummary.slice(0, TOP_BAR_PARTY_COUNT);
-  createBarChart("compensation-bar-chart", topBarParties);
+  const currentYear =
+    Number.isFinite(data.latest_year) && data.latest_year
+      ? data.latest_year
+      : Math.max(...data.rows.map((row) => row.year ?? 0));
+  const latestYearRows = data.rows
+    .filter((row) => row.year === currentYear)
+    .sort((a, b) => b.total_compensation - a.total_compensation)
+    .slice(0, TOP_BAR_PARTY_COUNT);
+  createBarChart("compensation-bar-chart", latestYearRows, currentYear);
   const trendParties = sortedSummary.slice(0, TOP_TREND_PARTY_COUNT);
   createTrendChart("compensation-trend-chart", data.rows, trendParties);
   renderTable(sortedSummary);
@@ -268,7 +275,7 @@ function renderSummaryCards(summary, metadata) {
     note.textContent = `基準年: ${sourceYear}年 / 集計政党数: ${formatInteger(summary.partyCount)}党`;
   }
 }
-function createBarChart(elementId, parties) {
+function createBarChart(elementId, parties, year) {
   const element = document.getElementById(elementId);
   if (!element) return null;
   let chart = echarts.getInstanceByDom(element);
@@ -276,15 +283,34 @@ function createBarChart(elementId, parties) {
     chart = echarts.init(element, undefined, { renderer: "svg" });
     charts.push(chart);
   }
-  const categories = parties.map((item) => item.party);
-  const values = parties.map((item) => item.total_compensation);
+  if (!Array.isArray(parties) || parties.length === 0) {
+    chart?.clear();
+    return chart;
+  }
+  const categories = parties.map((item) => item.party).reverse();
+  const values = parties.map((item) => item.total_compensation).reverse();
+  const yearLabel = Number.isFinite(year) ? `${year}年` : "";
   chart.setOption(
     {
-      grid: { top: 32, left: 120, right: 24, bottom: 24 },
+      title: yearLabel
+        ? {
+            text: yearLabel,
+            left: "center",
+            top: 4,
+            textStyle: { fontSize: 13, color: "#475569" },
+          }
+        : undefined,
+      grid: { top: yearLabel ? 32 : 24, left: 120, right: 24, bottom: 24 },
       tooltip: {
         trigger: "axis",
         axisPointer: { type: "shadow" },
-        valueFormatter: (value) => formatYenShort(value),
+        formatter: (params) => {
+          const item = params?.[0];
+          if (!item) return "";
+          return `${yearLabel ? `${yearLabel}<br />` : ""}${item.name}: ${formatYenShort(
+            item.value,
+          )}`;
+        },
       },
       xAxis: {
         type: "value",
@@ -304,7 +330,7 @@ function createBarChart(elementId, parties) {
           data: values,
           itemStyle: {
             color: ({ dataIndex }) => (dataIndex === 0 ? "#2563eb" : "#60a5fa"),
-            borderRadius: [6, 6, 6, 6],
+            borderRadius: 0,
           },
         },
       ],
@@ -512,4 +538,5 @@ export async function initCompensationDashboard() {
     },
   };
 }
+
 
