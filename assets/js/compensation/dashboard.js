@@ -3,7 +3,7 @@ const TOP_BAR_PARTY_COUNT = 10;
 const TOP_TREND_PARTY_COUNT = 5;
 const TABLE_LIMIT = 20;
 const MOBILE_YEAR_SPAN_DEFAULT = 10;
-const DESKTOP_YEAR_SPAN_DEFAULT = 0;
+const DESKTOP_YEAR_SPAN_DEFAULT = 20;
 const charts = [];
 function isMobileDevice() {
   if (typeof navigator === "undefined") return false;
@@ -154,36 +154,72 @@ function getYearBounds(rows) {
   };
 }
 function deriveCompensationView(rawData, spanYears) {
+  const currentYear = new Date().getFullYear();
   const sourceRows = Array.isArray(rawData.municipality_breakdown)
     ? rawData.municipality_breakdown.slice()
     : [];
   const sourceTerms = Array.isArray(rawData.municipality_terms)
     ? rawData.municipality_terms.slice()
     : [];
-  const { minYear, maxYear, availableSpan } = getYearBounds(sourceRows);
+  const municipalRowsWithinCurrentYear = sourceRows.filter((row) => {
+    const value = Number(row.year);
+    return Number.isFinite(value) && value <= currentYear;
+  });
+  const termRowsWithinCurrentYear = sourceTerms.filter((term) => {
+    const value = Number(
+      term.election_year ??
+        (typeof term.term_start === "string" ? Number(term.term_start.slice(0, 4)) : NaN),
+    );
+    return Number.isFinite(value) && value <= currentYear;
+  });
+  const rowsForProcessing =
+    municipalRowsWithinCurrentYear.length > 0 ? municipalRowsWithinCurrentYear : sourceRows;
+  const termsForProcessing =
+    termRowsWithinCurrentYear.length > 0 ? termRowsWithinCurrentYear : sourceTerms;
+  const { minYear, maxYear, availableSpan } = getYearBounds(rowsForProcessing);
+  const effectiveMaxYear =
+    maxYear !== null && Number.isFinite(maxYear) ? Math.min(maxYear, currentYear) : maxYear;
+  const effectiveSpan =
+    availableSpan !== null && Number.isFinite(effectiveMaxYear) && Number.isFinite(minYear)
+      ? Math.max(0, effectiveMaxYear - minYear + 1)
+      : availableSpan;
   let requestedSpan = Number(spanYears);
   if (!Number.isFinite(requestedSpan) || requestedSpan < 0) {
     requestedSpan = 0;
   }
-  if (availableSpan !== null) {
-    requestedSpan = Math.min(requestedSpan, availableSpan);
+  if (effectiveSpan !== null) {
+    requestedSpan = Math.min(requestedSpan, effectiveSpan);
   }
   const cutoffYear =
-    requestedSpan > 0 && Number.isFinite(maxYear) ? maxYear - requestedSpan + 1 : null;
+    requestedSpan > 0 && Number.isFinite(effectiveMaxYear)
+      ? effectiveMaxYear - requestedSpan + 1
+      : null;
   const filteredMunicipalityRows =
     cutoffYear !== null
-      ? sourceRows.filter((row) => Number(row.year) >= cutoffYear)
-      : sourceRows;
+      ? rowsForProcessing.filter(
+          (row) => Number(row.year) >= cutoffYear && Number(row.year) <= effectiveMaxYear,
+        )
+      : rowsForProcessing.filter((row) => Number(row.year) <= effectiveMaxYear);
   const filteredTerms =
     cutoffYear !== null
-      ? sourceTerms.filter((term) => {
+      ? termsForProcessing.filter((term) => {
           const electionYear = Number(
             term.election_year ??
               (typeof term.term_start === "string" ? term.term_start.slice(0, 4) : NaN),
           );
-          return Number.isFinite(electionYear) && electionYear >= cutoffYear;
+          return (
+            Number.isFinite(electionYear) &&
+            electionYear >= cutoffYear &&
+            electionYear <= effectiveMaxYear
+          );
         })
-      : sourceTerms;
+      : termsForProcessing.filter((term) => {
+          const electionYear = Number(
+            term.election_year ??
+              (typeof term.term_start === "string" ? term.term_start.slice(0, 4) : NaN),
+          );
+          return Number.isFinite(electionYear) && electionYear <= effectiveMaxYear;
+        });
   const aggregatedMunicipality = aggregateMunicipalRows(filteredMunicipalityRows);
   const partyYearRows = buildPartyYearRowsFromMunicipalRows(aggregatedMunicipality);
   const partySummary = buildPartySummaryFromMunicipalRows(aggregatedMunicipality);
@@ -193,11 +229,11 @@ function deriveCompensationView(rawData, spanYears) {
     rows: partyYearRows,
     municipality_breakdown: aggregatedMunicipality,
     municipality_terms: filteredTerms,
-    latest_year: maxYear,
+    latest_year: effectiveMaxYear,
     earliest_year: minYear,
     applied_span_years: requestedSpan,
     cutoff_year: cutoffYear,
-    available_span_years: availableSpan,
+    available_span_years: effectiveSpan,
   };
 }
 function renderCompensationView(data) {
