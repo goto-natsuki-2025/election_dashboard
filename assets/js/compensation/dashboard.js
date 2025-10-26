@@ -34,33 +34,37 @@ const TEXT = {
 };
 
 const SUMMARY_COLUMNS = {
-  party: "政党",
-  totalCompensation: "推計総額",
-  seatCount: "座席数",
-  municipalityCount: "自治体数",
+  party: "party",
+  totalCompensation: "total_compensation",
+  seatCount: "seat_count",
+  municipalityCount: "municipality_count",
 };
 
 const YEARLY_COLUMNS = {
-  party: "政党",
-  year: "年",
-  seatCount: "座席数",
-  municipalityCount: "自治体数",
-  totalCompensation: "推計総額",
+  party: "party",
+  year: "year",
+  seatCount: "seat_count",
+  municipalityCount: "municipality_count",
+  totalCompensation: "total_compensation",
 };
 
 const MUNICIPAL_COLUMNS = {
-  party: "政党",
-  year: "年",
-  prefecture: "都道府県",
-  municipality: "市区町村",
-  seatCount: "座席数",
-  annualCompensation: "期間総額（1人）",
-  monthlyCompensation: "月額",
-  totalCompensation: "推計総額",
-  monthsInTerm: "在任月数",
-  bonusMarch: "期末手当回数（3月）",
-  bonusJune: "期末手当回数（6月）",
-  bonusDecember: "期末手当回数（12月）",
+  party: "party",
+  year: "year",
+  prefecture: "prefecture",
+  municipality: "municipality",
+  seatCount: "seat_count",
+  annualCompensation: "annual_compensation",
+  monthlyCompensation: "monthly_compensation",
+  bonusCompensation: "bonus_compensation",
+  totalCompensation: "total_compensation",
+  monthsInTerm: "months_in_term",
+  bonusMarch: "bonus_count_march",
+  bonusJune: "bonus_count_june",
+  bonusDecember: "bonus_count_december",
+  bonusAmountMarch: "bonus_amount_march",
+  bonusAmountJune: "bonus_amount_june",
+  bonusAmountDecember: "bonus_amount_december",
 };
 
 function formatYenShort(value) {
