@@ -332,7 +332,7 @@ function createTrendChart(elementId, yearlyRows, parties) {
     return {
       name: party.party,
       type: "line",
-      smooth: true,
+      smooth: false,
       data,
     };
   });
@@ -509,3 +509,4 @@ export async function initCompensationDashboard() {
     },
   };
 }
+
