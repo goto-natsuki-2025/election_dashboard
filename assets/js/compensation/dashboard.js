@@ -1,15 +1,5 @@
-const SUMMARY_URL = new URL(
-  "../../../data/party_compensation_summary_2020.csv",
-  import.meta.url,
-).toString();
-const YEARLY_URL = new URL(
-  "../../../data/party_compensation_yearly_2020.csv",
-  import.meta.url,
-).toString();
-const MUNICIPAL_URL = new URL(
-  "../../../data/party_compensation_municipal_2020.csv",
-  import.meta.url,
-).toString();
+import { loadCompensationData as loadCompensationDataset } from "./data-loader.js";
+
 const TOP_BAR_PARTY_COUNT = 10;
 const TOP_TREND_PARTY_COUNT = 5;
 const TABLE_LIMIT = 20;
@@ -33,44 +23,6 @@ const TEXT = {
   millionUnit: "百万円",
 };
 
-const SUMMARY_COLUMNS = {
-  party: "party",
-  totalCompensation: "total_compensation",
-  seatCount: "seat_count",
-  municipalityCount: "municipality_count",
-};
-
-const YEARLY_COLUMNS = {
-  party: "party",
-  year: "year",
-  seatCount: "seat_count",
-  municipalityCount: "municipality_count",
-  totalCompensation: "total_compensation",
-};
-
-const MUNICIPAL_COLUMNS = {
-  party: "party",
-  year: "year",
-  prefecture: "prefecture",
-  municipality: "municipality",
-  seatCount: "seat_count",
-  annualCompensation: "annual_compensation",
-  monthlyCompensation: "monthly_compensation",
-  bonusCompensation: "bonus_compensation",
-  totalCompensation: "total_compensation",
-  monthsInTerm: "months_in_term",
-  bonusMarch: "bonus_count_march",
-  bonusJune: "bonus_count_june",
-  bonusDecember: "bonus_count_december",
-  bonusAmountMarch: "bonus_amount_march",
-  bonusAmountJune: "bonus_amount_june",
-  bonusAmountDecember: "bonus_amount_december",
-  electionDate: "election_date",
-  electionYear: "election_year",
-  termStart: "term_start",
-  termEnd: "term_end",
-};
-
 function formatYenShort(value) {
   if (!Number.isFinite(value)) return "-";
   if (value >= 1e11) {
@@ -89,14 +41,6 @@ function formatAxisLabel(value) {
   return `${(value / 1e8).toFixed(1)}${TEXT.billionUnit}`;
 }
 
-function toNumber(value) {
-  if (value === null || value === undefined || value === "") return null;
-  const text = String(value).replace(/,/g, "").trim();
-  if (!text) return null;
-  const number = Number(text);
-  return Number.isFinite(number) ? number : null;
-}
-
 function aggregateMunicipalRows(rows) {
   const map = new Map();
   for (const row of rows) {
@@ -106,8 +50,8 @@ function aggregateMunicipalRows(rows) {
       map.set(key, { ...row });
       continue;
     }
-    existing.total_compensation += row.total_compensation;
-    existing.annual_compensation += row.annual_compensation;
+    existing.total_compensation += row.total_compensation ?? 0;
+    existing.annual_compensation += row.annual_compensation ?? 0;
     existing.bonus_compensation =
       (existing.bonus_compensation ?? 0) + (row.bonus_compensation ?? 0);
     existing.months_in_term = (existing.months_in_term ?? 0) + (row.months_in_term ?? 0);
@@ -135,78 +79,9 @@ function aggregateMunicipalRows(rows) {
   return Array.from(map.values());
 }
 
-async function loadCsv(url) {
-  const response = await fetch(url, { cache: "no-cache" });
-  if (!response.ok) {
-    throw new Error(`Failed to load ${url}: ${response.status} ${response.statusText}`);
-  }
-  const csvText = await response.text();
-  return Papa.parse(csvText, {
-    header: true,
-    skipEmptyLines: true,
-  }).data;
-}
-
 async function loadCompensationData() {
-  const [summaryRows, yearlyRows, municipalityRows] = await Promise.all([
-    loadCsv(SUMMARY_URL),
-    loadCsv(YEARLY_URL),
-    loadCsv(MUNICIPAL_URL),
-  ]);
-
-  const summary = summaryRows.map((row) => ({
-    party: String(row[SUMMARY_COLUMNS.party] ?? "").trim(),
-    total_compensation: toNumber(row[SUMMARY_COLUMNS.totalCompensation]) ?? 0,
-    seat_count: toNumber(row[SUMMARY_COLUMNS.seatCount]) ?? 0,
-    municipality_count: toNumber(row[SUMMARY_COLUMNS.municipalityCount]) ?? 0,
-  }));
-
-  const yearly = yearlyRows
-    .map((row) => ({
-      party: String(row[YEARLY_COLUMNS.party] ?? "").trim(),
-      year: toNumber(row[YEARLY_COLUMNS.year]),
-      seat_count: toNumber(row[YEARLY_COLUMNS.seatCount]) ?? 0,
-      municipality_count: toNumber(row[YEARLY_COLUMNS.municipalityCount]) ?? 0,
-      total_compensation: toNumber(row[YEARLY_COLUMNS.totalCompensation]) ?? 0,
-    }))
-    .filter((row) => row.year !== null);
-
-  const municipalityTerms = municipalityRows
-    .map((row) => ({
-      party: String(row[MUNICIPAL_COLUMNS.party] ?? "").trim(),
-      year: toNumber(row[MUNICIPAL_COLUMNS.year]),
-      prefecture: row[MUNICIPAL_COLUMNS.prefecture]
-        ? String(row[MUNICIPAL_COLUMNS.prefecture]).trim()
-        : "",
-      municipality: row[MUNICIPAL_COLUMNS.municipality]
-        ? String(row[MUNICIPAL_COLUMNS.municipality]).trim()
-        : "",
-      seat_count: toNumber(row[MUNICIPAL_COLUMNS.seatCount]) ?? 0,
-      annual_compensation: toNumber(row[MUNICIPAL_COLUMNS.annualCompensation]) ?? 0,
-      monthly_compensation: toNumber(row[MUNICIPAL_COLUMNS.monthlyCompensation]) ?? 0,
-      bonus_compensation: toNumber(row[MUNICIPAL_COLUMNS.bonusCompensation]) ?? 0,
-      total_compensation: toNumber(row[MUNICIPAL_COLUMNS.totalCompensation]) ?? 0,
-      months_in_term: toNumber(row[MUNICIPAL_COLUMNS.monthsInTerm]) ?? 0,
-      bonus_count_march: toNumber(row[MUNICIPAL_COLUMNS.bonusMarch]) ?? 0,
-      bonus_count_june: toNumber(row[MUNICIPAL_COLUMNS.bonusJune]) ?? 0,
-      bonus_count_december: toNumber(row[MUNICIPAL_COLUMNS.bonusDecember]) ?? 0,
-      bonus_amount_march: toNumber(row[MUNICIPAL_COLUMNS.bonusAmountMarch]) ?? 0,
-      bonus_amount_june: toNumber(row[MUNICIPAL_COLUMNS.bonusAmountJune]) ?? 0,
-      bonus_amount_december: toNumber(row[MUNICIPAL_COLUMNS.bonusAmountDecember]) ?? 0,
-      election_date: row[MUNICIPAL_COLUMNS.electionDate]
-        ? String(row[MUNICIPAL_COLUMNS.electionDate]).trim()
-        : "",
-      election_year: toNumber(row[MUNICIPAL_COLUMNS.electionYear]),
-      term_start: row[MUNICIPAL_COLUMNS.termStart]
-        ? String(row[MUNICIPAL_COLUMNS.termStart]).trim()
-        : "",
-      term_end: row[MUNICIPAL_COLUMNS.termEnd]
-        ? String(row[MUNICIPAL_COLUMNS.termEnd]).trim()
-        : "",
-    }))
-    .filter((row) => row.year !== null && row.prefecture && row.municipality);
-
-  const municipality = aggregateMunicipalRows(municipalityTerms);
+  const dataset = await loadCompensationDataset();
+  const municipality = aggregateMunicipalRows(dataset.municipality_breakdown);
   municipality.sort((a, b) => {
     const prefectureDiff = a.prefecture.localeCompare(b.prefecture, "ja-JP");
     if (prefectureDiff !== 0) return prefectureDiff;
@@ -218,11 +93,11 @@ async function loadCompensationData() {
   });
 
   return {
-    source_compensation_year: 2020,
-    party_summary: summary,
-    rows: yearly,
+    source_compensation_year: dataset.source_compensation_year,
+    party_summary: dataset.party_summary,
+    rows: dataset.rows,
     municipality_breakdown: municipality,
-    municipality_terms: municipalityTerms,
+    municipality_terms: dataset.municipality_terms,
   };
 }
 
