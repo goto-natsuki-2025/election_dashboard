@@ -1,3 +1,4 @@
+﻿import { PARTY_PERIODS } from "../constants.js";
 const CANDIDATE_DETAILS_URL = new URL(
   "../../../data/candidate_details.csv.gz",
   import.meta.url,
@@ -12,6 +13,22 @@ const BONUS_COLUMN_INDICES = {
   12: 14,
 };
 
+function parseYearFromDateString(value) {
+  if (!value) return null;
+  const match = /^\d{4}/.exec(String(value));
+  return match ? Number(match[0]) : null;
+}
+
+function isPartyActiveInYear(party, year) {
+  if (!Number.isFinite(year)) return true;
+  const info = PARTY_PERIODS[party];
+  if (!info) return true;
+  const foundedYear = parseYearFromDateString(info.founded);
+  if (foundedYear && year < foundedYear) return false;
+  const dissolvedYear = parseYearFromDateString(info.dissolved);
+  if (dissolvedYear && year > dissolvedYear) return false;
+  return true;
+}
 const WINNING_KEYWORDS = ["当選", "補欠当選", "繰上当選", "繰り上げ当選", "当せん", "再選"];
 
 const PREFECTURES = [
@@ -446,6 +463,9 @@ function buildPartyCompensation(seatTerms, compensationMap) {
 
       const perSeatYearTotal = record.monthly_compensation * (months + bonusMultiplier);
       const totalYearCompensation = perSeatYearTotal * record.seat_count;
+      if (!isPartyActiveInYear(record.party, year)) {
+        continue;
+      }
 
       annualRecords.push({
         party: record.party,
@@ -550,7 +570,9 @@ function buildPartyCompensation(seatTerms, compensationMap) {
     };
   });
 
-  const municipalityTerms = termRecords.map((record) => ({
+  const municipalityTerms = termRecords
+    .filter((record) => isPartyActiveInYear(record.party, record.election_date.getFullYear()))
+    .map((record) => ({
     prefecture: record.prefecture,
     municipality: record.municipality,
     party: record.party,
@@ -594,3 +616,6 @@ export async function loadCompensationData() {
   const compensationMap = loadCompensationReference(compensationCsv);
   return buildPartyCompensation(seatTerms, compensationMap);
 }
+
+
+
