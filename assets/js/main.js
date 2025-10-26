@@ -12,9 +12,10 @@ import {
   renderPartyTrendChart,
   renderSummary,
 } from "./renderers.js";
+import { initCompensationDashboard } from "./compensation/dashboard.js";
 import { initElectionSearchDashboard } from "./search/dashboard.js";
 
-function setupViewSwitching(onSearchActivate) {
+function setupViewSwitching(activations = {}) {
   const tabs = document.querySelectorAll(".dashboard-tab");
   const views = document.querySelectorAll(".dashboard-view");
 
@@ -30,8 +31,9 @@ function setupViewSwitching(onSearchActivate) {
       view.hidden = !isActive;
     });
 
-    if (targetId === "search-dashboard" && typeof onSearchActivate === "function") {
-      onSearchActivate();
+    const callback = activations[targetId];
+    if (typeof callback === "function") {
+      callback();
     }
   };
 
@@ -78,11 +80,20 @@ async function main() {
   renderPartyHighlights(timeline, 6);
   renderPartyTrendChart("party-trend-chart", timeline);
 
+  const compensationDashboard = await initCompensationDashboard();
   const searchDashboard = initElectionSearchDashboard({ elections, candidates });
-  setupViewSwitching(() => {
-    requestAnimationFrame(() => {
-      searchDashboard?.resize();
-    });
+
+  setupViewSwitching({
+    "compensation-dashboard": () => {
+      requestAnimationFrame(() => {
+        compensationDashboard?.resize();
+      });
+    },
+    "search-dashboard": () => {
+      requestAnimationFrame(() => {
+        searchDashboard?.resize();
+      });
+    },
   });
 }
 
