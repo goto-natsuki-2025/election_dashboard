@@ -1,9 +1,10 @@
 ﻿import { loadCompensationData as loadCompensationDataset } from "./data-loader.js";
 const TOP_BAR_PARTY_COUNT = 10;
-const TOP_TREND_PARTY_COUNT = 5;
+const TOP_TREND_PARTY_COUNT = 10;
 const TABLE_LIMIT = 20;
-const MOBILE_YEAR_SPAN_DEFAULT = 10;
-const DESKTOP_YEAR_SPAN_DEFAULT = 0;
+const TREND_DEFAULT_SPAN_YEARS = 20;
+const MOBILE_YEAR_SPAN_DEFAULT = 1;
+const DESKTOP_YEAR_SPAN_DEFAULT = 1;
 const charts = [];
 function isMobileDevice() {
   if (typeof navigator === "undefined") return false;
@@ -11,9 +12,9 @@ function isMobileDevice() {
   return /android|iphone|ipad|ipod|windows phone|mobile/i.test(userAgent);
 }
 const TEXT = {
-  summaryTitle: "政党別議員報酬推計",
+  summaryTitle: "議員報酬推計",
   summaryDescription:
-    "2020年時点の議員報酬月額・期末手当水準を用いた推計値です（自治体との突合ができなかったケースは集計に含まれていません）。",
+    "2020年時点の議員報酬月額と期末手当水準を基準に、当選議員（補欠当選・繰り上げ当選を含む）の在任月数を掛け合わせた推計値です。報酬データが見つからない自治体は集計に含まれていません。",
   totalLabel: "推計総額",
   seatLabel: "座席数",
   municipalityLabel: "自治体数",
@@ -25,22 +26,26 @@ const TEXT = {
   yenSuffix: "円",
   billionUnit: "億円",
   millionUnit: "百万円",
-};
-function formatYenShort(value) {
+};function formatYenShort(value) {
   if (!Number.isFinite(value)) return "-";
-  if (value >= 1e11) {
-    return `${(value / 1e8).toFixed(1)}${TEXT.billionUnit}`;
-  }
   if (value >= 1e8) {
-    return `${(value / 1e8).toFixed(2)}${TEXT.billionUnit}`;
+    const billions = Math.round(value / 1e8);
+    return `${billions}${TEXT.billionUnit}`;
   }
-  if (value >= 1e7) {
-    return `${Math.round(value / 1e6)}${TEXT.millionUnit}`;
+  if (value >= 1e6) {
+    const millions = Math.round(value / 1e6);
+    return `${millions}${TEXT.millionUnit}`;
   }
-  return `${Math.round(value).toLocaleString("ja-JP")}${TEXT.yenSuffix}`;
+  return `${Math.round(value)}${TEXT.yenSuffix}`;
 }
 function formatAxisLabel(value) {
-  return `${(value / 1e8).toFixed(1)}${TEXT.billionUnit}`;
+  if (!Number.isFinite(value)) return "";
+  const billions = Math.round(value / 1e8);
+  return `${billions}${TEXT.billionUnit}`;
+}
+function formatInteger(value) {
+  if (!Number.isFinite(value)) return "-";
+  return String(Math.round(value));
 }
 function aggregateMunicipalRows(rows) {
   const map = new Map();
@@ -154,50 +159,118 @@ function getYearBounds(rows) {
   };
 }
 function deriveCompensationView(rawData, spanYears) {
+  const currentYear = new Date().getFullYear();
   const sourceRows = Array.isArray(rawData.municipality_breakdown)
     ? rawData.municipality_breakdown.slice()
     : [];
   const sourceTerms = Array.isArray(rawData.municipality_terms)
     ? rawData.municipality_terms.slice()
     : [];
-  const { minYear, maxYear, availableSpan } = getYearBounds(sourceRows);
+  const municipalRowsWithinCurrentYear = sourceRows.filter((row) => {
+    const value = Number(row.year);
+    return Number.isFinite(value) && value <= currentYear;
+  });
+  const termRowsWithinCurrentYear = sourceTerms.filter((term) => {
+    const value = Number(
+      term.election_year ??
+        (typeof term.term_start === "string" ? Number(term.term_start.slice(0, 4)) : NaN),
+    );
+    return Number.isFinite(value) && value <= currentYear;
+  });
+  const rowsForProcessing =
+    municipalRowsWithinCurrentYear.length > 0 ? municipalRowsWithinCurrentYear : sourceRows;
+  const termsForProcessing =
+    termRowsWithinCurrentYear.length > 0 ? termRowsWithinCurrentYear : sourceTerms;
+  const { minYear, maxYear, availableSpan } = getYearBounds(rowsForProcessing);
+  const effectiveMaxYear =
+    maxYear !== null && Number.isFinite(maxYear) ? Math.min(maxYear, currentYear) : maxYear;
+  const effectiveSpan =
+    availableSpan !== null && Number.isFinite(effectiveMaxYear) && Number.isFinite(minYear)
+      ? Math.max(0, effectiveMaxYear - minYear + 1)
+      : availableSpan;
   let requestedSpan = Number(spanYears);
   if (!Number.isFinite(requestedSpan) || requestedSpan < 0) {
     requestedSpan = 0;
   }
-  if (availableSpan !== null) {
-    requestedSpan = Math.min(requestedSpan, availableSpan);
+  if (effectiveSpan !== null) {
+    requestedSpan = Math.min(requestedSpan, effectiveSpan);
   }
   const cutoffYear =
-    requestedSpan > 0 && Number.isFinite(maxYear) ? maxYear - requestedSpan + 1 : null;
+    requestedSpan > 0 && Number.isFinite(effectiveMaxYear)
+      ? effectiveMaxYear - requestedSpan + 1
+      : null;
   const filteredMunicipalityRows =
     cutoffYear !== null
-      ? sourceRows.filter((row) => Number(row.year) >= cutoffYear)
-      : sourceRows;
+      ? rowsForProcessing.filter(
+          (row) => Number(row.year) >= cutoffYear && Number(row.year) <= effectiveMaxYear,
+        )
+      : rowsForProcessing.filter((row) => Number(row.year) <= effectiveMaxYear);
   const filteredTerms =
     cutoffYear !== null
-      ? sourceTerms.filter((term) => {
+      ? termsForProcessing.filter((term) => {
           const electionYear = Number(
             term.election_year ??
               (typeof term.term_start === "string" ? term.term_start.slice(0, 4) : NaN),
           );
-          return Number.isFinite(electionYear) && electionYear >= cutoffYear;
+          return (
+            Number.isFinite(electionYear) &&
+            electionYear >= cutoffYear &&
+            electionYear <= effectiveMaxYear
+          );
         })
-      : sourceTerms;
+      : termsForProcessing.filter((term) => {
+          const electionYear = Number(
+            term.election_year ??
+              (typeof term.term_start === "string" ? term.term_start.slice(0, 4) : NaN),
+          );
+          return Number.isFinite(electionYear) && electionYear <= effectiveMaxYear;
+        });
   const aggregatedMunicipality = aggregateMunicipalRows(filteredMunicipalityRows);
   const partyYearRows = buildPartyYearRowsFromMunicipalRows(aggregatedMunicipality);
   const partySummary = buildPartySummaryFromMunicipalRows(aggregatedMunicipality);
+  let trendCutoffYear = null;
+  let trendSpanYears = null;
+  let trendPartyYearRows = partyYearRows;
+  let trendSummary = partySummary;
+  if (Number.isFinite(effectiveMaxYear)) {
+    const baseMinYear = Number.isFinite(minYear) ? minYear : effectiveMaxYear;
+    const candidateCutoff = effectiveMaxYear - TREND_DEFAULT_SPAN_YEARS + 1;
+    const resolvedCutoff = Number.isFinite(candidateCutoff)
+      ? Math.max(baseMinYear, candidateCutoff)
+      : baseMinYear;
+    if (Number.isFinite(resolvedCutoff)) {
+      trendCutoffYear = resolvedCutoff;
+      const trendMunicipalityRows = rowsForProcessing.filter((row) => {
+        const year = Number(row.year);
+        return (
+          Number.isFinite(year) &&
+          year <= effectiveMaxYear &&
+          (trendCutoffYear === null || year >= trendCutoffYear)
+        );
+      });
+      if (trendMunicipalityRows.length > 0) {
+        const aggregatedTrend = aggregateMunicipalRows(trendMunicipalityRows);
+        trendPartyYearRows = buildPartyYearRowsFromMunicipalRows(aggregatedTrend);
+        trendSummary = buildPartySummaryFromMunicipalRows(aggregatedTrend);
+      }
+      trendSpanYears = effectiveMaxYear - trendCutoffYear + 1;
+    }
+  }
   return {
     source_compensation_year: rawData.source_compensation_year,
     party_summary: partySummary,
     rows: partyYearRows,
     municipality_breakdown: aggregatedMunicipality,
     municipality_terms: filteredTerms,
-    latest_year: maxYear,
+    trend_rows: trendPartyYearRows,
+    trend_summary: trendSummary,
+    trend_cutoff_year: trendCutoffYear,
+    trend_span_years: trendSpanYears,
+    latest_year: effectiveMaxYear,
     earliest_year: minYear,
     applied_span_years: requestedSpan,
     cutoff_year: cutoffYear,
-    available_span_years: availableSpan,
+    available_span_years: effectiveSpan,
   };
 }
 function renderCompensationView(data) {
@@ -206,30 +279,64 @@ function renderCompensationView(data) {
   const sortedSummary = data.party_summary
     .slice()
     .sort((a, b) => b.total_compensation - a.total_compensation);
-  const topBarParties = sortedSummary.slice(0, TOP_BAR_PARTY_COUNT);
-  createBarChart("compensation-bar-chart", topBarParties);
-  const trendParties = sortedSummary.slice(0, TOP_TREND_PARTY_COUNT);
-  createTrendChart("compensation-trend-chart", data.rows, trendParties);
+  const currentYear =
+    Number.isFinite(data.latest_year) && data.latest_year
+      ? data.latest_year
+      : Math.max(...data.rows.map((row) => row.year ?? 0));
+  const latestYearRows = data.rows
+    .filter((row) => row.year === currentYear)
+    .sort((a, b) => b.total_compensation - a.total_compensation)
+    .slice(0, TOP_BAR_PARTY_COUNT);
+  createBarChart("compensation-bar-chart", latestYearRows, currentYear);
+  const trendRows =
+    Array.isArray(data.trend_rows) && data.trend_rows.length > 0 ? data.trend_rows : data.rows;
+  const trendSummarySource =
+    Array.isArray(data.trend_summary) && data.trend_summary.length > 0
+      ? data.trend_summary
+      : data.party_summary ?? [];
+  const trendParties = trendSummarySource
+    .slice()
+    .sort((a, b) => b.total_compensation - a.total_compensation)
+    .slice(0, TOP_TREND_PARTY_COUNT);
+  createTrendChart("compensation-trend-chart", trendRows, trendParties);
   renderTable(sortedSummary);
 }
 function renderSummaryCards(summary, metadata) {
-  const formatNumber = (value) => value.toLocaleString("ja-JP");
   document.getElementById("comp-summary-total").textContent = formatYenShort(
     summary.totalCompensation,
   );
-  document.getElementById("comp-summary-seats").textContent = formatNumber(summary.totalSeats);
-  document.getElementById("comp-summary-municipalities").textContent = formatNumber(
+  document.getElementById("comp-summary-seats").textContent = formatInteger(
+    summary.totalSeats,
+  );
+  document.getElementById("comp-summary-municipalities").textContent = formatInteger(
     summary.totalMunicipalities,
   );
   const note = document.getElementById("comp-summary-note");
   if (note) {
     const sourceYear = metadata?.source_compensation_year ?? 2020;
-    note.textContent = `基準年: ${sourceYear}年 / 集計政党: ${summary.partyCount.toLocaleString(
-      "ja-JP",
-    )}党`;
+    const latestYear =
+      metadata && Number.isFinite(Number(metadata.latest_year))
+        ? Number(metadata.latest_year)
+        : null;
+    const startYearCandidate =
+      metadata && Number.isFinite(Number(metadata.cutoff_year))
+        ? Number(metadata.cutoff_year)
+        : metadata && Number.isFinite(Number(metadata.earliest_year))
+          ? Number(metadata.earliest_year)
+          : null;
+    const spanYears =
+      metadata && Number.isFinite(Number(metadata.applied_span_years))
+        ? Number(metadata.applied_span_years)
+        : 0;
+    const spanText = spanYears > 0 ? `${spanYears}\u5e74\u5206` : "\u5168\u671f\u9593";
+    const rangeText =
+      startYearCandidate !== null && latestYear !== null
+        ? `${startYearCandidate}\u5e74\u301c${latestYear}\u5e74`
+        : "\u671f\u9593\u60c5\u5831\u306a\u3057";
+    note.textContent = `\u57fa\u6e96\u5e74: ${sourceYear}\u5e74 / \u96c6\u8a08\u671f\u9593: ${rangeText} (${spanText}) / \u5bfe\u8c61\u653f\u515a\u6570: ${formatInteger(summary.partyCount)}`;
   }
 }
-function createBarChart(elementId, parties) {
+function createBarChart(elementId, parties, year) {
   const element = document.getElementById(elementId);
   if (!element) return null;
   let chart = echarts.getInstanceByDom(element);
@@ -237,15 +344,34 @@ function createBarChart(elementId, parties) {
     chart = echarts.init(element, undefined, { renderer: "svg" });
     charts.push(chart);
   }
-  const categories = parties.map((item) => item.party);
-  const values = parties.map((item) => item.total_compensation);
+  if (!Array.isArray(parties) || parties.length === 0) {
+    chart?.clear();
+    return chart;
+  }
+  const categories = parties.map((item) => item.party).reverse();
+  const values = parties.map((item) => item.total_compensation).reverse();
+  const yearLabel = Number.isFinite(year) ? `${year}年` : "";
   chart.setOption(
     {
-      grid: { top: 32, left: 120, right: 24, bottom: 24 },
+      title: yearLabel
+        ? {
+            text: yearLabel,
+            left: "center",
+            top: 4,
+            textStyle: { fontSize: 13, color: "#475569" },
+          }
+        : undefined,
+      grid: { top: yearLabel ? 32 : 24, left: 120, right: 24, bottom: 24 },
       tooltip: {
         trigger: "axis",
         axisPointer: { type: "shadow" },
-        valueFormatter: (value) => formatYenShort(value),
+        formatter: (params) => {
+          const item = params?.[0];
+          if (!item) return "";
+          return `${yearLabel ? `${yearLabel}<br />` : ""}${item.name}: ${formatYenShort(
+            item.value,
+          )}`;
+        },
       },
       xAxis: {
         type: "value",
@@ -256,6 +382,7 @@ function createBarChart(elementId, parties) {
       },
       yAxis: {
         type: "category",
+        inverse: true,
         data: categories,
         axisLabel: { interval: 0 },
       },
@@ -265,7 +392,7 @@ function createBarChart(elementId, parties) {
           data: values,
           itemStyle: {
             color: ({ dataIndex }) => (dataIndex === 0 ? "#2563eb" : "#60a5fa"),
-            borderRadius: [6, 6, 6, 6],
+            borderRadius: 0,
           },
         },
       ],
@@ -286,26 +413,61 @@ function createTrendChart(elementId, yearlyRows, parties) {
   const partyYearMap = new Map();
   for (const row of yearlyRows) {
     const key = `${row.party}::${row.year}`;
-    partyYearMap.set(key, row.total_compensation ?? 0);
+    partyYearMap.set(key, {
+      total_compensation: row.total_compensation ?? null,
+      seat_count: row.seat_count ?? null,
+    });
   }
   const series = parties.map((party) => {
     const data = years.map((year) => {
       const key = `${party.party}::${year}`;
-      return partyYearMap.get(key) ?? null;
+      const entry = partyYearMap.get(key);
+      if (!entry || entry.total_compensation === null) {
+        return null;
+      }
+      const value = Number(entry.total_compensation);
+      if (!Number.isFinite(value)) return null;
+      return {
+        value,
+        seats: entry.seat_count,
+      };
     });
     return {
       name: party.party,
       type: "line",
-      smooth: true,
+      smooth: false,
       data,
     };
   });
   chart.setOption(
     {
-      grid: { top: 40, left: 56, right: 24, bottom: 32 },
+      grid: { top: 40, left: 76, right: 24, bottom: 32 },
       tooltip: {
         trigger: "axis",
-        valueFormatter: (value) => formatYenShort(value),
+        formatter: (params) => {
+          if (!Array.isArray(params) || params.length === 0) return "";
+          const heading = params[0]?.axisValueLabel ?? "";
+          const lines = heading ? [heading] : [];
+          for (const item of params) {
+            const dataPoint =
+              item && item.data && typeof item.data === "object" && "value" in item.data
+                ? item.data
+                : null;
+            const rawValue = dataPoint ? dataPoint.value : item?.value;
+            const hasValue =
+              rawValue !== null && rawValue !== undefined && Number.isFinite(Number(rawValue));
+            const valueNumber = hasValue ? Number(rawValue) : null;
+            const valueText = hasValue ? formatYenShort(valueNumber) : "-";
+            const valueMarkup = hasValue ? `<strong>${valueText}</strong>` : valueText;
+            let detail = valueMarkup;
+            const rawSeats = dataPoint ? dataPoint.seats : undefined;
+            if (rawSeats !== null && rawSeats !== undefined && Number.isFinite(Number(rawSeats))) {
+              detail += ` (${formatInteger(Number(rawSeats))}\u8b70\u5e2d)`;
+            }
+            lines.push(`${item.marker}${item.seriesName} ${detail}`);
+          }
+          return lines.join("<br />");
+        },
       },
       legend: {
         type: "scroll",
@@ -317,7 +479,7 @@ function createTrendChart(elementId, yearlyRows, parties) {
       },
       yAxis: {
         type: "value",
-        axisLabel: { formatter: formatAxisLabel },
+        axisLabel: { formatter: formatAxisLabel, align: "right" },
         splitLine: { show: true, lineStyle: { color: "#e2e8f0" } },
       },
       series,
@@ -343,10 +505,10 @@ function renderTable(rows) {
     partyCell.textContent = row.party || "無所属";
     tr.appendChild(partyCell);
     const seatCell = document.createElement("td");
-    seatCell.textContent = row.seat_count.toLocaleString("ja-JP");
+    seatCell.textContent = row.seat_count;
     tr.appendChild(seatCell);
     const municipalityCell = document.createElement("td");
-    municipalityCell.textContent = row.municipality_count.toLocaleString("ja-JP");
+    municipalityCell.textContent = row.municipality_count;
     tr.appendChild(municipalityCell);
     const valueCell = document.createElement("td");
     valueCell.textContent = formatYenShort(row.total_compensation);
@@ -360,17 +522,17 @@ function updateSpanHelpText(element, viewData) {
   const earliestYear = Number(viewData?.earliest_year);
   const span = Number(viewData?.applied_span_years);
   if (!Number.isFinite(latestYear)) {
-    element.textContent = "0 を指定すると全期間を対象にします。";
+    element.textContent = "0を指定すると全期間が対象になります。";
     return;
   }
   if (span > 0 && Number.isFinite(viewData?.cutoff_year)) {
-    element.textContent = `${viewData.cutoff_year}年〜${latestYear}年を集計しています（0 を指定すると全期間）。`;
+    element.textContent = `${viewData.cutoff_year}年〜${latestYear}年を集計しています（0を指定すると全期間）。`;
     return;
   }
   if (Number.isFinite(earliestYear)) {
-    element.textContent = `${earliestYear}年〜${latestYear}年を集計しています。0 を指定すると全期間を対象にします。`;
+    element.textContent = `${earliestYear}年〜${latestYear}年を集計しています。0を指定すると全期間が対象になります。`;
   } else {
-    element.textContent = "0 を指定すると全期間を対象にします。";
+    element.textContent = "0を指定すると全期間が対象になります。";
   }
 }
 function computeSummary(data) {
@@ -473,3 +635,8 @@ export async function initCompensationDashboard() {
     },
   };
 }
+
+
+
+
+

@@ -119,7 +119,7 @@
           <form class="compensation-controls" aria-label="集計期間の設定">
             <label for="compensation-year-span">
               集計に含める最新の年数
-              <small>（スマートフォンでは少ない件数で開始します）</small>
+              <small>（初期値：当年の1年分）</small>
             </label>
             <div class="control-group">
               <input
@@ -129,11 +129,11 @@
                 min="0"
                 max="50"
                 step="1"
-                value="0"
+                value="1"
                 inputmode="numeric"
               />
               <button type="button" id="compensation-apply-span" class="button is-small">
-                反映する
+                反映
               </button>
             </div>
             <p class="help-text" id="compensation-span-help">
@@ -160,7 +160,7 @@
         </section>
 
         <section class="card">
-          <h3>政党別推計年額（上位10党）</h3>
+          <h3>政党別推計年額</h3>
           <div
             id="compensation-bar-chart"
             class="chart compensation-chart"
@@ -169,7 +169,7 @@
         </section>
 
         <section class="card">
-          <h3>年別推移（推計上位党）</h3>
+          <h3>年別推移</h3>
           <div
             id="compensation-trend-chart"
             class="chart compensation-chart"
