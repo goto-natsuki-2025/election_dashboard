@@ -65,6 +65,10 @@ const MUNICIPAL_COLUMNS = {
   bonusAmountMarch: "bonus_amount_march",
   bonusAmountJune: "bonus_amount_june",
   bonusAmountDecember: "bonus_amount_december",
+  electionDate: "election_date",
+  electionYear: "election_year",
+  termStart: "term_start",
+  termEnd: "term_end",
 };
 
 function formatYenShort(value) {
@@ -91,6 +95,44 @@ function toNumber(value) {
   if (!text) return null;
   const number = Number(text);
   return Number.isFinite(number) ? number : null;
+}
+
+function aggregateMunicipalRows(rows) {
+  const map = new Map();
+  for (const row of rows) {
+    const key = `${row.prefecture}::${row.municipality}::${row.party}::${row.year}`;
+    const existing = map.get(key);
+    if (!existing) {
+      map.set(key, { ...row });
+      continue;
+    }
+    existing.total_compensation += row.total_compensation;
+    existing.annual_compensation += row.annual_compensation;
+    existing.bonus_compensation =
+      (existing.bonus_compensation ?? 0) + (row.bonus_compensation ?? 0);
+    existing.months_in_term = (existing.months_in_term ?? 0) + (row.months_in_term ?? 0);
+    existing.bonus_count_march =
+      (existing.bonus_count_march ?? 0) + (row.bonus_count_march ?? 0);
+    existing.bonus_count_june =
+      (existing.bonus_count_june ?? 0) + (row.bonus_count_june ?? 0);
+    existing.bonus_count_december =
+      (existing.bonus_count_december ?? 0) + (row.bonus_count_december ?? 0);
+    existing.seat_count = Math.max(existing.seat_count ?? 0, row.seat_count ?? 0);
+
+    const incomingElectionYear = row.election_year ?? row.year ?? -Infinity;
+    const existingElectionYear = existing.election_year ?? existing.year ?? -Infinity;
+    if (incomingElectionYear > existingElectionYear) {
+      existing.monthly_compensation = row.monthly_compensation;
+      existing.bonus_amount_march = row.bonus_amount_march;
+      existing.bonus_amount_june = row.bonus_amount_june;
+      existing.bonus_amount_december = row.bonus_amount_december;
+      existing.term_start = row.term_start;
+      existing.term_end = row.term_end;
+      existing.election_date = row.election_date;
+      existing.election_year = row.election_year ?? row.year;
+    }
+  }
+  return Array.from(map.values());
 }
 
 async function loadCsv(url) {
@@ -129,7 +171,7 @@ async function loadCompensationData() {
     }))
     .filter((row) => row.year !== null);
 
-  const municipality = municipalityRows
+  const municipalityTerms = municipalityRows
     .map((row) => ({
       party: String(row[MUNICIPAL_COLUMNS.party] ?? "").trim(),
       year: toNumber(row[MUNICIPAL_COLUMNS.year]),
@@ -142,19 +184,45 @@ async function loadCompensationData() {
       seat_count: toNumber(row[MUNICIPAL_COLUMNS.seatCount]) ?? 0,
       annual_compensation: toNumber(row[MUNICIPAL_COLUMNS.annualCompensation]) ?? 0,
       monthly_compensation: toNumber(row[MUNICIPAL_COLUMNS.monthlyCompensation]) ?? 0,
+      bonus_compensation: toNumber(row[MUNICIPAL_COLUMNS.bonusCompensation]) ?? 0,
       total_compensation: toNumber(row[MUNICIPAL_COLUMNS.totalCompensation]) ?? 0,
-      months_in_term: toNumber(row[MUNICIPAL_COLUMNS.monthsInTerm]),
-      bonus_count_march: toNumber(row[MUNICIPAL_COLUMNS.bonusMarch]),
-      bonus_count_june: toNumber(row[MUNICIPAL_COLUMNS.bonusJune]),
-      bonus_count_december: toNumber(row[MUNICIPAL_COLUMNS.bonusDecember]),
+      months_in_term: toNumber(row[MUNICIPAL_COLUMNS.monthsInTerm]) ?? 0,
+      bonus_count_march: toNumber(row[MUNICIPAL_COLUMNS.bonusMarch]) ?? 0,
+      bonus_count_june: toNumber(row[MUNICIPAL_COLUMNS.bonusJune]) ?? 0,
+      bonus_count_december: toNumber(row[MUNICIPAL_COLUMNS.bonusDecember]) ?? 0,
+      bonus_amount_march: toNumber(row[MUNICIPAL_COLUMNS.bonusAmountMarch]) ?? 0,
+      bonus_amount_june: toNumber(row[MUNICIPAL_COLUMNS.bonusAmountJune]) ?? 0,
+      bonus_amount_december: toNumber(row[MUNICIPAL_COLUMNS.bonusAmountDecember]) ?? 0,
+      election_date: row[MUNICIPAL_COLUMNS.electionDate]
+        ? String(row[MUNICIPAL_COLUMNS.electionDate]).trim()
+        : "",
+      election_year: toNumber(row[MUNICIPAL_COLUMNS.electionYear]),
+      term_start: row[MUNICIPAL_COLUMNS.termStart]
+        ? String(row[MUNICIPAL_COLUMNS.termStart]).trim()
+        : "",
+      term_end: row[MUNICIPAL_COLUMNS.termEnd]
+        ? String(row[MUNICIPAL_COLUMNS.termEnd]).trim()
+        : "",
     }))
     .filter((row) => row.year !== null && row.prefecture && row.municipality);
+
+  const municipality = aggregateMunicipalRows(municipalityTerms);
+  municipality.sort((a, b) => {
+    const prefectureDiff = a.prefecture.localeCompare(b.prefecture, "ja-JP");
+    if (prefectureDiff !== 0) return prefectureDiff;
+    const municipalityDiff = a.municipality.localeCompare(b.municipality, "ja-JP");
+    if (municipalityDiff !== 0) return municipalityDiff;
+    const partyDiff = a.party.localeCompare(b.party, "ja-JP");
+    if (partyDiff !== 0) return partyDiff;
+    return (a.year ?? 0) - (b.year ?? 0);
+  });
 
   return {
     source_compensation_year: 2020,
     party_summary: summary,
     rows: yearly,
     municipality_breakdown: municipality,
+    municipality_terms: municipalityTerms,
   };
 }
 
