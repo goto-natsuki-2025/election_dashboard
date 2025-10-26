@@ -116,7 +116,31 @@
           <p class="description" id="compensation-description">
             2020年時点の議員報酬月額と期末手当支給率を基準に、選挙実施月から次回選挙（または任期満了）までの在任月数と支給月を按分した推計です。
           </p>
-          <div class="summary-grid">
+          <form class="compensation-controls" aria-label="集計期間の設定">
+            <label for="compensation-year-span">
+              集計に含める最新の年数
+              <small>（スマートフォンでは少ない件数で開始します）</small>
+            </label>
+            <div class="control-group">
+              <input
+                type="number"
+                id="compensation-year-span"
+                name="compensation-year-span"
+                min="0"
+                max="50"
+                step="1"
+                value="0"
+                inputmode="numeric"
+              />
+              <button type="button" id="compensation-apply-span" class="button is-small">
+                反映する
+              </button>
+            </div>
+            <p class="help-text" id="compensation-span-help">
+              0 を指定すると全期間を対象にします。
+            </p>
+          </form>
+          <div class="summary-grid"><div class="summary-grid"><div class="summary-grid"><div class="summary-grid">
             <article class="summary-item">
               <span>推計総額</span>
               <strong id="comp-summary-total">-</strong>
@@ -280,3 +304,6 @@
     <script type="module" src="assets/js/main.js"></script>
   </body>
 </html>
+
+
+
