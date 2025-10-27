@@ -2,14 +2,14 @@ import { PREFECTURES, PREFECTURE_NAME_BY_CODE } from "../constants.js";
 import { isWinningOutcome, normaliseString } from "../utils.js";
 
 const GEOJSON_PATH = "assets/data/japan.geojson";
-const COLOR_STOPS = [
-  { threshold: 0, color: "#f8fafc" },
-  { threshold: 0.1, color: "#dbeafe" },
-  { threshold: 0.25, color: "#bfdbfe" },
-  { threshold: 0.4, color: "#93c5fd" },
-  { threshold: 0.55, color: "#60a5fa" },
-  { threshold: 0.7, color: "#3b82f6" },
-  { threshold: 0.85, color: "#1d4ed8" },
+const COLOR_PALETTE = [
+  "#f8fafc",
+  "#e2f3ff",
+  "#c3e1ff",
+  "#94c6ff",
+  "#64a5ff",
+  "#387cff",
+  "#1d4ed8",
 ];
 
 const PREFECTURE_PATTERNS = buildPrefecturePatterns();
@@ -155,14 +155,42 @@ function buildFeatureCollection(baseFeatures, partyMetrics, totalsByPrefecture) 
   };
 }
 
-function buildColorExpression() {
+function computeColorStops(metrics) {
+  const values = Array.from(metrics?.values?.() ?? [])
+    .map((entry) => Number(entry?.ratio ?? 0))
+    .filter((value) => Number.isFinite(value) && value >= 0);
+  if (values.length === 0) {
+    return [
+      { value: 0, color: COLOR_PALETTE[0] },
+      { value: 1, color: COLOR_PALETTE[COLOR_PALETTE.length - 1] },
+    ];
+  }
+  const max = Math.max(...values);
+  if (max <= 0) {
+    return [
+      { value: 0, color: COLOR_PALETTE[0] },
+      { value: 1, color: COLOR_PALETTE[COLOR_PALETTE.length - 1] },
+    ];
+  }
+  const stops = [];
+  const bucketCount = COLOR_PALETTE.length;
+  for (let index = 0; index < bucketCount; index += 1) {
+    const fraction = index / (bucketCount - 1);
+    const value = Math.min(max * fraction, 1);
+    if (stops.length === 0 || value > stops[stops.length - 1].value) {
+      stops.push({ value, color: COLOR_PALETTE[index] });
+    }
+  }
+  return stops;
+}
+
+function buildColorExpression(stops) {
   const expression = ["interpolate", ["linear"], ["get", "party_ratio"]];
-  for (const stop of COLOR_STOPS) {
-    expression.push(stop.threshold, stop.color);
+  for (const stop of stops) {
+    expression.push(stop.value, stop.color);
   }
   return expression;
 }
-
 function createLegendMarkup(breaks) {
   return breaks
     .map(
@@ -191,22 +219,29 @@ function updateLegend(container, selectedParty, breaks) {
   `;
 }
 
-function buildLegendBreaks() {
+function buildLegendBreaks(stops) {
+  const formatLegendValue = (value) => {
+    if (!Number.isFinite(value)) return "-";
+    const percent = value * 100;
+    if (percent === 0) return "0%";
+    if (percent < 0.1) return `${percent.toFixed(2)}%`;
+    if (percent < 10) return `${percent.toFixed(1)}%`;
+    return `${Math.round(percent)}%`;
+  };
+
   const labels = [];
-  for (let index = 0; index < COLOR_STOPS.length; index += 1) {
-    const current = COLOR_STOPS[index];
-    const next = COLOR_STOPS[index + 1];
+  for (let index = 0; index < stops.length; index += 1) {
+    const current = stops[index];
+    const next = stops[index + 1];
     if (!next) {
       labels.push({
         color: current.color,
-        label: `${Math.round(current.threshold * 100)}% 以上`,
+        label: `${formatLegendValue(current.value)} 以上`,
       });
     } else {
       labels.push({
         color: current.color,
-        label: `${Math.round(current.threshold * 100)}%〜${Math.round(
-          next.threshold * 100,
-        )}%`,
+        label: `${formatLegendValue(current.value)}〜${formatLegendValue(next.value)}`,
       });
     }
   }
@@ -376,14 +411,18 @@ export async function initPartyMapDashboard({ candidates }) {
     "bottom-right",
   );
 
-  const legendBreaks = buildLegendBreaks();
-  const defaultMetrics = aggregation.partyShareByPrefecture.get(defaultParty);
+  const defaultMetrics = aggregation.partyShareByPrefecture.get(defaultParty) ?? new Map();
+  const defaultStops = computeColorStops(defaultMetrics);
+  const defaultLegendItems =
+    defaultMetrics instanceof Map && defaultMetrics.size > 0
+      ? buildLegendBreaks(defaultStops)
+      : [];
   if (!defaultMetrics || defaultMetrics.size === 0) {
     showInfo(`${targetYear}年の${defaultParty}当選データがありません。`);
   } else {
     hideInfo();
   }
-  updateLegend(legendContainer, defaultParty, legendBreaks);
+  updateLegend(legendContainer, defaultParty, defaultLegendItems);
   updateSummary(
     summaryElement,
     defaultParty,
@@ -410,7 +449,12 @@ export async function initPartyMapDashboard({ candidates }) {
     if (source) {
       source.setData(data);
     }
-    updateLegend(legendContainer, party, legendBreaks);
+    const colorStops = computeColorStops(metrics);
+    if (map.getLayer("prefecture-fill")) {
+      map.setPaintProperty("prefecture-fill", "fill-color", buildColorExpression(colorStops));
+    }
+    const legendItems = metrics instanceof Map && metrics.size > 0 ? buildLegendBreaks(colorStops) : [];
+    updateLegend(legendContainer, party, legendItems);
     updateSummary(
       summaryElement,
       party,
@@ -432,11 +476,7 @@ export async function initPartyMapDashboard({ candidates }) {
   map.on("load", () => {
     map.addSource("prefectures", {
       type: "geojson",
-      data: buildFeatureCollection(
-        baseFeatures,
-        aggregation.partyShareByPrefecture.get(defaultParty),
-        aggregation.totalsByPrefecture,
-      ),
+      data: buildFeatureCollection(baseFeatures, defaultMetrics, aggregation.totalsByPrefecture),
       generateId: true,
     });
 
@@ -445,7 +485,7 @@ export async function initPartyMapDashboard({ candidates }) {
       type: "fill",
       source: "prefectures",
       paint: {
-        "fill-color": buildColorExpression(),
+        "fill-color": buildColorExpression(defaultStops),
         "fill-opacity": [
           "case",
           ["<", ["get", "total_seats"], 1],
