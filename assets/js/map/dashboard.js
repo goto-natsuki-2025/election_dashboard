@@ -561,7 +561,7 @@ export async function initPartyMapDashboard({ candidates }) {
           id: "background",
           type: "background",
           paint: {
-            "background-color": "#f1f5f9",
+            "background-color": "#cfdcff",
           },
         },
       ],
