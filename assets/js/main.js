@@ -14,6 +14,7 @@ import {
 } from "./renderers.js";
 import { initCompensationDashboard } from "./compensation/dashboard.js";
 import { initElectionSearchDashboard } from "./search/dashboard.js";
+import { initPartyMapDashboard } from "./map/dashboard.js";
 
 function setupViewSwitching(activations = {}) {
   const tabs = document.querySelectorAll(".dashboard-tab");
@@ -81,12 +82,18 @@ async function main() {
   renderPartyTrendChart("party-trend-chart", timeline);
 
   const compensationDashboard = await initCompensationDashboard();
+  const partyMapDashboard = await initPartyMapDashboard({ elections, candidates });
   const searchDashboard = initElectionSearchDashboard({ elections, candidates });
 
   setupViewSwitching({
     "compensation-dashboard": () => {
       requestAnimationFrame(() => {
         compensationDashboard?.resize();
+      });
+    },
+    "choropleth-dashboard": () => {
+      requestAnimationFrame(() => {
+        partyMapDashboard?.resize();
       });
     },
     "search-dashboard": () => {
