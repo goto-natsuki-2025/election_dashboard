@@ -22,6 +22,12 @@
     />
     <link rel="stylesheet" href="assets/css/base.css" />
     <link rel="stylesheet" href="assets/css/search.css" />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/maplibre-gl@3.3.1/dist/maplibre-gl.css"
+      integrity="sha384-p5cy4wHtKSqjnLUNjQ+8ffCwUp0vlLS+6lg1lc3qqXax2E1EmVCMCAimU+R0MOZH"
+      crossorigin="anonymous"
+    />
   </head>
   <body>
     <header>
@@ -31,7 +37,7 @@
       </p>
     </header>
     <main>
-      <nav class="dashboard-nav" aria-label="機能切替">
+            <nav class="dashboard-nav" aria-label="ページ切替">
         <button
           type="button"
           class="dashboard-tab is-active"
@@ -40,7 +46,7 @@
           aria-controls="party-dashboard"
           aria-selected="true"
         >
-          各党の所属議員数
+          党派の傾向分析
         </button>
         <button
           type="button"
@@ -50,7 +56,17 @@
           aria-controls="compensation-dashboard"
           aria-selected="false"
         >
-          議員報酬推計
+          議員報酬
+        </button>
+        <button
+          type="button"
+          class="dashboard-tab"
+          id="tab-choropleth"
+          data-view="choropleth-dashboard"
+          aria-controls="choropleth-dashboard"
+          aria-selected="false"
+        >
+          党派別コロプレス
         </button>
         <button
           type="button"
@@ -201,6 +217,36 @@
       </section>
 
       <section
+        id="choropleth-dashboard"
+        class="dashboard-view"
+        role="region"
+        aria-labelledby="tab-choropleth"
+      >
+        <section class="card choropleth-card">
+          <h2>党派別コロプレス地図</h2>
+          <p class="description">
+            党派を選択すると、全国47都道府県での議席占有率を濃淡で表示します。濃い色ほど当該党派の議席シェアが高いことを示します。
+          </p>
+          <form class="choropleth-controls" aria-label="党派を選択">
+            <label for="choropleth-party">党派</label>
+            <select id="choropleth-party"></select>
+          </form>
+          <div class="choropleth-map-wrapper">
+            <div
+              id="choropleth-map"
+              class="choropleth-map"
+              role="img"
+              aria-label="都道府県別議席率"
+            ></div>
+            <div id="choropleth-legend" class="choropleth-legend" aria-live="polite"></div>
+            <div id="choropleth-info" class="choropleth-info" hidden></div>
+          </div>
+          <p id="choropleth-summary" class="choropleth-summary"></p>
+        </section>
+      </section>
+
+
+      <section
         id="search-dashboard"
         class="dashboard-view"
         role="region"
@@ -301,6 +347,11 @@
 
     <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+    <script
+      src="https://unpkg.com/maplibre-gl@3.3.1/dist/maplibre-gl.js"
+      integrity="sha384-vpn/ucn7785xAq02KoJV78mMCB+FXl+yfBWS2MRjZkzEEvUEsJU3ZarsOD9MSGxu"
+      crossorigin="anonymous"
+    ></script>
     <script type="module" src="assets/js/main.js"></script>
   </body>
 </html>
