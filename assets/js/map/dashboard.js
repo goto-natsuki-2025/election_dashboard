@@ -213,11 +213,11 @@ function buildLegendBreaks() {
   return labels;
 }
 
-function updateSummary(element, selectedParty, partyMetrics, totalsByPrefecture) {
+function updateSummary(element, selectedParty, partyMetrics, totalsByPrefecture, year) {
   if (!element) return;
   const metrics = partyMetrics?.get(selectedParty);
   if (!metrics || metrics.size === 0) {
-    element.textContent = `${selectedParty}の当選データを検出できませんでした。`;
+    element.textContent = `${year}年の${selectedParty}当選データを検出できませんでした。`;
     return;
   }
   let maxPref = null;
@@ -234,7 +234,7 @@ function updateSummary(element, selectedParty, partyMetrics, totalsByPrefecture)
   const availablePrefectures = totalsByPrefecture.size;
   const maxPrefName =
     (maxPref && PREFECTURE_NAME_BY_CODE[maxPref]) || (maxPref ?? "―");
-  element.textContent = `${selectedParty}は${coveredPrefectures} / ${availablePrefectures} 都道府県で議席を獲得し、最大は${maxPrefName}の${formatPercent(
+  element.textContent = `${year}年、${selectedParty}は${coveredPrefectures} / ${availablePrefectures} 都道府県で議席を獲得し、最大は${maxPrefName}の${formatPercent(
     maxValue,
   )}（${seatSum.toLocaleString("ja-JP")}議席）です。`;
 }
@@ -277,9 +277,30 @@ export async function initPartyMapDashboard({ candidates }) {
     return null;
   }
 
-  const aggregation = aggregatePartyShares(Array.isArray(candidates) ? candidates : []);
+  const fallbackYear = new Date().getFullYear();
+  const sourceCandidates = Array.isArray(candidates) ? candidates : [];
+  const candidatesWithDate = sourceCandidates.filter(
+    (candidate) =>
+      candidate?.election_date instanceof Date &&
+      !Number.isNaN(candidate.election_date?.getTime()) &&
+      isWinningOutcome(candidate.outcome),
+  );
+
+  const years = candidatesWithDate.reduce((set, candidate) => {
+    set.add(candidate.election_date.getFullYear());
+    return set;
+  }, new Set());
+
+  const targetYear = years.size > 0 ? Math.max(...years) : fallbackYear;
+  const filteredCandidates = candidatesWithDate.filter(
+    (candidate) => candidate.election_date.getFullYear() === targetYear,
+  );
+
+  const aggregation = aggregatePartyShares(filteredCandidates);
   if (!aggregation.parties.length) {
-    showInfo("当選データから党派別の議席率を計算できませんでした。データセットをご確認ください。");
+    showInfo(
+      `${targetYear}年の当選データから党派別の議席率を計算できませんでした。データセットをご確認ください。`,
+    );
     if (partySelect) {
       partySelect.disabled = true;
     }
@@ -358,7 +379,7 @@ export async function initPartyMapDashboard({ candidates }) {
   const legendBreaks = buildLegendBreaks();
   const defaultMetrics = aggregation.partyShareByPrefecture.get(defaultParty);
   if (!defaultMetrics || defaultMetrics.size === 0) {
-    showInfo(`${defaultParty}は当選データがありません。`);
+    showInfo(`${targetYear}年の${defaultParty}当選データがありません。`);
   } else {
     hideInfo();
   }
@@ -368,6 +389,7 @@ export async function initPartyMapDashboard({ candidates }) {
     defaultParty,
     aggregation.partyShareByPrefecture,
     aggregation.totalsByPrefecture,
+    targetYear,
   );
 
   const tooltip = document.createElement("div");
@@ -394,13 +416,14 @@ export async function initPartyMapDashboard({ candidates }) {
       party,
       aggregation.partyShareByPrefecture,
       aggregation.totalsByPrefecture,
+      targetYear,
     );
     if (hoveredId !== null) {
       map.setFeatureState({ source: "prefectures", id: hoveredId }, { hover: false });
       hoveredId = null;
     }
     if (metrics.size === 0) {
-      showInfo(`${party}は当選データがありません。`);
+      showInfo(`${targetYear}年の${party}当選データがありません。`);
     } else {
       hideInfo();
     }
