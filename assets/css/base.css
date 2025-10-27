@@ -319,12 +319,12 @@
         border-radius: 16px;
         overflow: hidden;
         background: #e2e8f0;
-        min-height: 420px;
+        min-height: 620px;
       }
 
       .choropleth-map {
         width: 100%;
-        min-height: 420px;
+        min-height: 620px;
       }
 
       .choropleth-legend {
@@ -431,10 +431,10 @@
           background: rgba(255, 255, 255, 0.98);
         }
         .choropleth-map-wrapper {
-          min-height: 360px;
+          min-height: 520px;
         }
         .choropleth-map {
-          min-height: 360px;
+          min-height: 520px;
         }
         .choropleth-info {
           position: static;
