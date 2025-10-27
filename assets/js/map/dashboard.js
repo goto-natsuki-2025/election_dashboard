@@ -670,13 +670,13 @@ export async function initPartyMapDashboard({ candidates }) {
           "case",
           ["boolean", ["feature-state", "hover"], false],
           "#1d4ed8",
-          "#ffffff",
+          "#d1d8f5",
         ],
         "line-width": [
           "case",
           ["boolean", ["feature-state", "hover"], false],
-          2.2,
-          1,
+          2.6,
+          1.2,
         ],
       },
     });
