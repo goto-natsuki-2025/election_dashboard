@@ -345,6 +345,10 @@ function formatPercent(value) {
   return `${Math.round(value * 100)}%`;
 }
 
+function renderSummaryText({ year, party, coveredPrefectures, availablePrefectures, maxPrefName, maxRatio, seatSum }) {
+  return `${year}年、${party}は${coveredPrefectures} / ${availablePrefectures} 都道府県で議席を獲得し、最大は<strong>${maxPrefName}の${formatPercent(maxRatio)}（${seatSum.toLocaleString("ja-JP")}議席）</strong>です。`;
+}
+
 function updateLegend(container, selectedParty, breaks) {
   if (!container) return;
   container.innerHTML = `
@@ -405,9 +409,15 @@ function updateSummary(element, selectedParty, metrics, totalsByPrefecture, year
   const availablePrefectures = totalsByPrefecture?.size ?? 0;
   const maxPrefName =
     (maxPref && PREFECTURE_NAME_BY_CODE[maxPref]) || maxPref || "―";
-  element.textContent = `${year}年、${selectedParty}は${coveredPrefectures} / ${availablePrefectures} 都道府県で議席を獲得し、最大は${maxPrefName}の${formatPercent(
-    maxValue,
-  )}（${seatSum.toLocaleString("ja-JP")}議席）です。`;
+  element.innerHTML = renderSummaryText({
+    year,
+    party: selectedParty,
+    coveredPrefectures,
+    availablePrefectures,
+    maxPrefName,
+    maxRatio: maxValue,
+    seatSum,
+  });
 }
 
 function getSortedParties(totalsMap) {
