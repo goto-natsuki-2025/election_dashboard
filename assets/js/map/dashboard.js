@@ -100,7 +100,7 @@ function aggregatePartySeatsByYear(candidates, { termYears = TERM_YEARS } = {}) 
   }
 
   const yearsSet = new Set(events.map((event) => event.year));
-  const years = Array.from(yearsSet).sort((a, b) => a - b);
+  const years = Array.from(yearsSet).sort((a, b) => b - a);
 
   const municipalityState = new Map();
   const prefectureState = new Map();
@@ -487,7 +487,9 @@ export async function initPartyMapDashboard({ candidates }) {
     return null;
   }
 
-  const defaultYear = aggregation.years[aggregation.years.length - 1];
+  const currentYear = new Date().getFullYear();
+  const defaultYear =
+    aggregation.years.find((year) => year === currentYear) ?? aggregation.years[0];
   const state = {
     year: prepareYearSelect(yearSelect, aggregation.years, defaultYear),
     party: "",
