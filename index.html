@@ -227,9 +227,15 @@
           <p class="description">
             党派を選択すると、全国47都道府県での議席占有率を濃淡で表示します。濃い色ほど当該党派の議席シェアが高いことを示します。
           </p>
-          <form class="choropleth-controls" aria-label="党派を選択">
-            <label for="choropleth-party">党派</label>
-            <select id="choropleth-party"></select>
+          <form class="choropleth-controls" aria-label="表示条件の選択">
+            <div class="choropleth-control">
+              <label for="choropleth-year">年</label>
+              <select id="choropleth-year"></select>
+            </div>
+            <div class="choropleth-control">
+              <label for="choropleth-party">党派</label>
+              <select id="choropleth-party"></select>
+            </div>
           </form>
           <div class="choropleth-map-wrapper">
             <div

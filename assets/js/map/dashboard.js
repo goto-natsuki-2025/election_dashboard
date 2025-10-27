@@ -1,4 +1,4 @@
-import { PREFECTURES, PREFECTURE_NAME_BY_CODE } from "../constants.js";
+import { PREFECTURES, PREFECTURE_NAME_BY_CODE, TERM_YEARS } from "../constants.js";
 import { isWinningOutcome, normaliseString } from "../utils.js";
 
 const GEOJSON_PATH = "assets/data/japan.geojson";
@@ -50,53 +50,185 @@ function resolvePrefectureFromText(value) {
   return null;
 }
 
-function aggregatePartyShares(candidates) {
-  const totalsByPrefecture = new Map();
-  const partyTotals = new Map();
+function aggregatePartySeatsByYear(candidates, { termYears = TERM_YEARS } = {}) {
+  const eventsByMunicipality = new Map();
 
   for (const candidate of candidates) {
     if (!isWinningOutcome(candidate.outcome)) continue;
+    if (!(candidate.election_date instanceof Date)) continue;
+    if (Number.isNaN(candidate.election_date?.getTime())) continue;
+
     const prefectureCode =
       resolvePrefectureFromText(candidate.source_key) ||
       resolvePrefectureFromText(candidate.source_file);
     if (!prefectureCode) continue;
 
+    const electionDate = candidate.election_date;
+    const year = electionDate.getFullYear();
     const partyName = normaliseString(candidate.party) || "無所属";
-    let bucket = totalsByPrefecture.get(prefectureCode);
-    if (!bucket) {
-      bucket = { total: 0, parties: new Map() };
-      totalsByPrefecture.set(prefectureCode, bucket);
+    const municipalityKey = normaliseString(candidate.source_key || candidate.source_file);
+    if (!municipalityKey) continue;
+
+    const eventKey = `${municipalityKey}::${electionDate.getTime()}`;
+    let event = eventsByMunicipality.get(eventKey);
+    if (!event) {
+      event = {
+        municipalityKey,
+        prefectureCode,
+        date: electionDate,
+        year,
+        parties: new Map(),
+        total: 0,
+      };
+      eventsByMunicipality.set(eventKey, event);
     }
-    bucket.total += 1;
-    bucket.parties.set(partyName, (bucket.parties.get(partyName) ?? 0) + 1);
-    partyTotals.set(partyName, (partyTotals.get(partyName) ?? 0) + 1);
+    event.total += 1;
+    event.parties.set(partyName, (event.parties.get(partyName) ?? 0) + 1);
   }
 
-  const partyShareByPrefecture = new Map();
-  totalsByPrefecture.forEach((bucket, prefectureCode) => {
-    if (bucket.total <= 0) return;
-    bucket.parties.forEach((count, party) => {
-      let map = partyShareByPrefecture.get(party);
-      if (!map) {
-        map = new Map();
-        partyShareByPrefecture.set(party, map);
+  const events = Array.from(eventsByMunicipality.values()).sort(
+    (a, b) => a.date.getTime() - b.date.getTime(),
+  );
+
+  if (events.length === 0) {
+    return {
+      years: [],
+      totalsByYearPrefecture: new Map(),
+      partyShareByYear: new Map(),
+      partyTotalsByYear: new Map(),
+    };
+  }
+
+  const yearsSet = new Set(events.map((event) => event.year));
+  const years = Array.from(yearsSet).sort((a, b) => a - b);
+
+  const municipalityState = new Map();
+  const prefectureState = new Map();
+  const partyTotalsState = new Map();
+
+  const totalsByYearPrefecture = new Map();
+  const partyShareByYear = new Map();
+  const partyTotalsByYear = new Map();
+
+  let eventIndex = 0;
+
+  const applyEvent = (event) => {
+    const previous = municipalityState.get(event.municipalityKey);
+    if (previous) {
+      const pref = prefectureState.get(previous.prefectureCode);
+      if (pref) {
+        pref.total -= previous.total;
+        previous.parties.forEach((seats, party) => {
+          const next = (pref.parties.get(party) ?? 0) - seats;
+          if (next <= 0) {
+            pref.parties.delete(party);
+          } else {
+            pref.parties.set(party, next);
+          }
+          const partyTotalNext = (partyTotalsState.get(party) ?? 0) - seats;
+          if (partyTotalNext <= 0) {
+            partyTotalsState.delete(party);
+          } else {
+            partyTotalsState.set(party, partyTotalNext);
+          }
+        });
+        if (pref.total <= 0) {
+          prefectureState.delete(previous.prefectureCode);
+        }
       }
-      map.set(prefectureCode, {
-        ratio: count / bucket.total,
-        seats: count,
-        total: bucket.total,
+    }
+
+    const nextEntry = {
+      prefectureCode: event.prefectureCode,
+      total: event.total,
+      parties: event.parties,
+      expiresAt:
+        new Date(event.date.getFullYear() + termYears, event.date.getMonth(), event.date.getDate()),
+    };
+    municipalityState.set(event.municipalityKey, nextEntry);
+
+    let pref = prefectureState.get(event.prefectureCode);
+    if (!pref) {
+      pref = { total: 0, parties: new Map() };
+      prefectureState.set(event.prefectureCode, pref);
+    }
+    pref.total += event.total;
+    event.parties.forEach((seats, party) => {
+      pref.parties.set(party, (pref.parties.get(party) ?? 0) + seats);
+      partyTotalsState.set(party, (partyTotalsState.get(party) ?? 0) + seats);
+    });
+  };
+
+  const removeExpiredEntries = (year) => {
+    const cutoff = new Date(year + 1, 0, 1).getTime();
+    for (const [municipalityKey, entry] of municipalityState.entries()) {
+      if (!entry.expiresAt || entry.expiresAt.getTime() >= cutoff) continue;
+      municipalityState.delete(municipalityKey);
+      const pref = prefectureState.get(entry.prefectureCode);
+      if (!pref) continue;
+      pref.total -= entry.total;
+      entry.parties.forEach((seats, party) => {
+        const next = (pref.parties.get(party) ?? 0) - seats;
+        if (next <= 0) {
+          pref.parties.delete(party);
+        } else {
+          pref.parties.set(party, next);
+        }
+        const totalNext = (partyTotalsState.get(party) ?? 0) - seats;
+        if (totalNext <= 0) {
+          partyTotalsState.delete(party);
+        } else {
+          partyTotalsState.set(party, totalNext);
+        }
+      });
+      if (pref.total <= 0) {
+        prefectureState.delete(entry.prefectureCode);
+      }
+    }
+  };
+
+  for (const year of years) {
+    while (eventIndex < events.length && events[eventIndex].year <= year) {
+      applyEvent(events[eventIndex]);
+      eventIndex += 1;
+    }
+
+    removeExpiredEntries(year);
+
+    const prefTotalsSnapshot = new Map();
+    const partyShareSnapshot = new Map();
+    prefectureState.forEach((prefState, prefCode) => {
+      if (prefState.total <= 0) return;
+      prefTotalsSnapshot.set(prefCode, prefState.total);
+      prefState.parties.forEach((seats, party) => {
+        let map = partyShareSnapshot.get(party);
+        if (!map) {
+          map = new Map();
+          partyShareSnapshot.set(party, map);
+        }
+        map.set(prefCode, {
+          seats,
+          total: prefState.total,
+          ratio: prefState.total > 0 ? seats / prefState.total : 0,
+        });
       });
     });
-  });
 
-  const parties = Array.from(partyTotals.entries())
-    .map(([party, seats]) => ({ party, seats }))
-    .sort((a, b) => b.seats - a.seats);
+    const partyTotalsSnapshot = new Map();
+    partyTotalsState.forEach((seats, party) => {
+      partyTotalsSnapshot.set(party, seats);
+    });
+
+    totalsByYearPrefecture.set(year, prefTotalsSnapshot);
+    partyShareByYear.set(year, partyShareSnapshot);
+    partyTotalsByYear.set(year, partyTotalsSnapshot);
+  }
 
   return {
-    totalsByPrefecture,
-    partyShareByPrefecture,
-    parties,
+    years,
+    totalsByYearPrefecture,
+    partyShareByYear,
+    partyTotalsByYear,
   };
 }
 
@@ -141,7 +273,12 @@ function buildFeatureCollection(baseFeatures, partyMetrics, totalsByPrefecture) 
     features: baseFeatures.map((feature) => {
       const prefCode = feature.properties.pref_code;
       const metrics = partyMetrics?.get(prefCode) ?? null;
-      const totalSeats = totalsByPrefecture.get(prefCode)?.total ?? 0;
+      const totalValue =
+        typeof totalsByPrefecture?.get === "function"
+          ? totalsByPrefecture.get(prefCode)
+          : null;
+      const totalSeats =
+        Number.isFinite(totalValue) && totalValue !== null ? Number(totalValue) : 0;
       return {
         ...feature,
         properties: {
@@ -248,10 +385,9 @@ function buildLegendBreaks(stops) {
   return labels;
 }
 
-function updateSummary(element, selectedParty, partyMetrics, totalsByPrefecture, year) {
+function updateSummary(element, selectedParty, metrics, totalsByPrefecture, year) {
   if (!element) return;
-  const metrics = partyMetrics?.get(selectedParty);
-  if (!metrics || metrics.size === 0) {
+  if (!(metrics instanceof Map) || metrics.size === 0) {
     element.textContent = `${year}年の${selectedParty}当選データを検出できませんでした。`;
     return;
   }
@@ -266,24 +402,53 @@ function updateSummary(element, selectedParty, partyMetrics, totalsByPrefecture,
     }
   });
   const coveredPrefectures = metrics.size;
-  const availablePrefectures = totalsByPrefecture.size;
+  const availablePrefectures = totalsByPrefecture?.size ?? 0;
   const maxPrefName =
-    (maxPref && PREFECTURE_NAME_BY_CODE[maxPref]) || (maxPref ?? "―");
+    (maxPref && PREFECTURE_NAME_BY_CODE[maxPref]) || maxPref || "―";
   element.textContent = `${year}年、${selectedParty}は${coveredPrefectures} / ${availablePrefectures} 都道府県で議席を獲得し、最大は${maxPrefName}の${formatPercent(
     maxValue,
   )}（${seatSum.toLocaleString("ja-JP")}議席）です。`;
 }
 
-function preparePartySelect(select, parties, defaultParty) {
-  if (!select) return;
+function getSortedParties(totalsMap) {
+  if (!(totalsMap instanceof Map)) return [];
+  return Array.from(totalsMap.entries())
+    .map(([party, seats]) => ({ party, seats }))
+    .sort((a, b) => b.seats - a.seats);
+}
+
+function prepareYearSelect(select, years, defaultYear) {
+  if (!select) return defaultYear ?? null;
   select.innerHTML = "";
+  years.forEach((year) => {
+    const option = document.createElement("option");
+    option.value = String(year);
+    option.textContent = `${year}年`;
+    select.appendChild(option);
+  });
+  const fallback = years.includes(defaultYear) ? defaultYear : years[years.length - 1];
+  select.value = String(fallback);
+  select.disabled = years.length <= 1;
+  return fallback;
+}
+
+function preparePartySelect(select, parties, defaultParty) {
+  if (!select) return defaultParty ?? null;
+  select.innerHTML = "";
+  const fallback =
+    parties.find((entry) => entry.party === defaultParty)?.party ?? parties[0]?.party ?? "";
   parties.forEach((entry) => {
     const option = document.createElement("option");
     option.value = entry.party;
     option.textContent = `${entry.party}（${entry.seats.toLocaleString("ja-JP")}議席）`;
+    if (entry.party === fallback) {
+      option.selected = true;
+    }
     select.appendChild(option);
   });
-  select.value = defaultParty ?? (parties[0]?.party ?? "");
+  select.value = fallback ?? "";
+  select.disabled = parties.length === 0;
+  return fallback ?? "";
 }
 
 export async function initPartyMapDashboard({ candidates }) {
@@ -312,38 +477,46 @@ export async function initPartyMapDashboard({ candidates }) {
     return null;
   }
 
-  const fallbackYear = new Date().getFullYear();
-  const sourceCandidates = Array.isArray(candidates) ? candidates : [];
-  const candidatesWithDate = sourceCandidates.filter(
-    (candidate) =>
-      candidate?.election_date instanceof Date &&
-      !Number.isNaN(candidate.election_date?.getTime()) &&
-      isWinningOutcome(candidate.outcome),
-  );
+  const yearSelect = root.querySelector("#choropleth-year");
 
-  const years = candidatesWithDate.reduce((set, candidate) => {
-    set.add(candidate.election_date.getFullYear());
-    return set;
-  }, new Set());
-
-  const targetYear = years.size > 0 ? Math.max(...years) : fallbackYear;
-  const filteredCandidates = candidatesWithDate.filter(
-    (candidate) => candidate.election_date.getFullYear() === targetYear,
-  );
-
-  const aggregation = aggregatePartyShares(filteredCandidates);
-  if (!aggregation.parties.length) {
-    showInfo(
-      `${targetYear}年の当選データから党派別の議席率を計算できませんでした。データセットをご確認ください。`,
-    );
-    if (partySelect) {
-      partySelect.disabled = true;
-    }
+  const aggregation = aggregatePartySeatsByYear(Array.isArray(candidates) ? candidates : []);
+  if (aggregation.years.length === 0) {
+    showInfo("当選データから党派別の議席率を計算できませんでした。データセットをご確認ください。");
+    partySelect?.setAttribute("disabled", "true");
+    yearSelect?.setAttribute("disabled", "true");
     return null;
   }
 
-  const defaultParty = aggregation.parties[0].party;
-  preparePartySelect(partySelect, aggregation.parties, defaultParty);
+  const defaultYear = aggregation.years[aggregation.years.length - 1];
+  const state = {
+    year: prepareYearSelect(yearSelect, aggregation.years, defaultYear),
+    party: "",
+  };
+
+  const partiesForYear = getSortedParties(
+    aggregation.partyTotalsByYear.get(state.year) ?? new Map(),
+  );
+  state.party = preparePartySelect(partySelect, partiesForYear, partiesForYear[0]?.party ?? "");
+
+  const getMetricsFor = (year, party) =>
+    aggregation.partyShareByYear.get(year)?.get(party) ?? new Map();
+  const getTotalsFor = (year) => aggregation.totalsByYearPrefecture.get(year) ?? new Map();
+
+  const initialMetrics = getMetricsFor(state.year, state.party);
+  const initialTotals = getTotalsFor(state.year);
+  const initialStops = computeColorStops(initialMetrics);
+  const initialLegendItems =
+    initialMetrics instanceof Map && initialMetrics.size > 0
+      ? buildLegendBreaks(initialStops)
+      : [];
+
+  if (!(initialMetrics instanceof Map) || initialMetrics.size === 0) {
+    showInfo(`${state.year}年の${state.party || "該当党派"}当選データがありません。`);
+  } else {
+    hideInfo();
+  }
+  updateLegend(legendContainer, state.party || "該当党派なし", initialLegendItems);
+  updateSummary(summaryElement, state.party || "該当党派なし", initialMetrics, initialTotals, state.year);
 
   let geoJson;
   try {
@@ -411,26 +584,6 @@ export async function initPartyMapDashboard({ candidates }) {
     "bottom-right",
   );
 
-  const defaultMetrics = aggregation.partyShareByPrefecture.get(defaultParty) ?? new Map();
-  const defaultStops = computeColorStops(defaultMetrics);
-  const defaultLegendItems =
-    defaultMetrics instanceof Map && defaultMetrics.size > 0
-      ? buildLegendBreaks(defaultStops)
-      : [];
-  if (!defaultMetrics || defaultMetrics.size === 0) {
-    showInfo(`${targetYear}年の${defaultParty}当選データがありません。`);
-  } else {
-    hideInfo();
-  }
-  updateLegend(legendContainer, defaultParty, defaultLegendItems);
-  updateSummary(
-    summaryElement,
-    defaultParty,
-    aggregation.partyShareByPrefecture,
-    aggregation.totalsByPrefecture,
-    targetYear,
-  );
-
   const tooltip = document.createElement("div");
   tooltip.className = "choropleth-tooltip";
   tooltip.hidden = true;
@@ -438,12 +591,13 @@ export async function initPartyMapDashboard({ candidates }) {
 
   let hoveredId = null;
 
-  const updateMapForParty = (party) => {
-    const metrics = aggregation.partyShareByPrefecture.get(party) ?? new Map();
+  const updateMapForSelection = (year, party) => {
+    const metrics = getMetricsFor(year, party);
+    const totals = getTotalsFor(year);
     const data = buildFeatureCollection(
       baseFeatures,
       metrics,
-      aggregation.totalsByPrefecture,
+      totals,
     );
     const source = map.getSource("prefectures");
     if (source) {
@@ -453,21 +607,17 @@ export async function initPartyMapDashboard({ candidates }) {
     if (map.getLayer("prefecture-fill")) {
       map.setPaintProperty("prefecture-fill", "fill-color", buildColorExpression(colorStops));
     }
-    const legendItems = metrics instanceof Map && metrics.size > 0 ? buildLegendBreaks(colorStops) : [];
-    updateLegend(legendContainer, party, legendItems);
-    updateSummary(
-      summaryElement,
-      party,
-      aggregation.partyShareByPrefecture,
-      aggregation.totalsByPrefecture,
-      targetYear,
-    );
+    const legendItems =
+      metrics instanceof Map && metrics.size > 0 ? buildLegendBreaks(colorStops) : [];
+    const displayParty = party || "該当党派なし";
+    updateLegend(legendContainer, displayParty, legendItems);
+    updateSummary(summaryElement, displayParty, metrics, totals, year);
     if (hoveredId !== null) {
       map.setFeatureState({ source: "prefectures", id: hoveredId }, { hover: false });
       hoveredId = null;
     }
-    if (metrics.size === 0) {
-      showInfo(`${targetYear}年の${party}当選データがありません。`);
+    if (!(metrics instanceof Map) || metrics.size === 0) {
+      showInfo(`${year}年の${displayParty}当選データがありません。`);
     } else {
       hideInfo();
     }
@@ -476,7 +626,7 @@ export async function initPartyMapDashboard({ candidates }) {
   map.on("load", () => {
     map.addSource("prefectures", {
       type: "geojson",
-      data: buildFeatureCollection(baseFeatures, defaultMetrics, aggregation.totalsByPrefecture),
+      data: buildFeatureCollection(baseFeatures, initialMetrics, initialTotals),
       generateId: true,
     });
 
@@ -485,7 +635,7 @@ export async function initPartyMapDashboard({ candidates }) {
       type: "fill",
       source: "prefectures",
       paint: {
-        "fill-color": buildColorExpression(defaultStops),
+        "fill-color": buildColorExpression(initialStops),
         "fill-opacity": [
           "case",
           ["<", ["get", "total_seats"], 1],
@@ -496,6 +646,8 @@ export async function initPartyMapDashboard({ candidates }) {
         ],
       },
     });
+
+    updateMapForSelection(state.year, state.party);
 
     map.addLayer({
       id: "prefecture-outline",
@@ -541,9 +693,9 @@ export async function initPartyMapDashboard({ candidates }) {
       tooltip.hidden = false;
       tooltip.innerHTML = `
         <strong>${prefName}</strong>
-        <span>${formatPercent(ratio)}（${seats.toLocaleString(
+        <span>${formatPercent(ratio)} (${seats.toLocaleString(
         "ja-JP",
-      )} / ${total.toLocaleString("ja-JP")}）</span>
+      )} / ${total.toLocaleString("ja-JP")})</span>
       `;
       tooltip.style.left = `${event.point.x + 16}px`;
       tooltip.style.top = `${event.point.y + 16}px`;
@@ -558,13 +710,21 @@ export async function initPartyMapDashboard({ candidates }) {
     });
   });
 
-  const handleChange = (event) => {
-    const party = event.target.value;
-    if (!party) return;
-    updateMapForParty(party);
-  };
+  partySelect?.addEventListener("change", (event) => {
+    state.party = event.target.value;
+    updateMapForSelection(state.year, state.party);
+  });
 
-  partySelect?.addEventListener("change", handleChange);
+  yearSelect?.addEventListener("change", (event) => {
+    const yearValue = Number(event.target.value);
+    if (!Number.isFinite(yearValue)) return;
+    state.year = yearValue;
+    const yearParties = getSortedParties(
+      aggregation.partyTotalsByYear.get(state.year) ?? new Map(),
+    );
+    state.party = preparePartySelect(partySelect, yearParties, state.party);
+    updateMapForSelection(state.year, state.party);
+  });
 
   return {
     resize: () => {

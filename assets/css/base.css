@@ -300,6 +300,12 @@
         align-items: center;
       }
 
+      .choropleth-control {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+
       .choropleth-controls label {
         font-weight: 600;
         color: var(--text);
