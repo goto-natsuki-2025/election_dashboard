@@ -16,6 +16,28 @@ import { initCompensationDashboard } from "./compensation/dashboard.js";
 import { initElectionSearchDashboard } from "./search/dashboard.js";
 import { initPartyMapDashboard } from "./map/dashboard.js";
 
+function isPromiseLike(value) {
+  return value && typeof value.then === "function";
+}
+
+function scheduleDeferredWork(task) {
+  const run = () => {
+    try {
+      const result = task();
+      if (isPromiseLike(result)) {
+        result.catch((error) => console.error(error));
+      }
+    } catch (error) {
+      console.error(error);
+    }
+  };
+  if (typeof window !== "undefined" && typeof window.requestIdleCallback === "function") {
+    window.requestIdleCallback(() => run(), { timeout: 2000 });
+    return;
+  }
+  setTimeout(run, 0);
+}
+
 function setupViewSwitching(activations = {}) {
   const tabs = document.querySelectorAll(".dashboard-tab");
   const views = document.querySelectorAll(".dashboard-view");
@@ -34,7 +56,10 @@ function setupViewSwitching(activations = {}) {
 
     const callback = activations[targetId];
     if (typeof callback === "function") {
-      callback();
+      const result = callback();
+      if (isPromiseLike(result)) {
+        result.catch((error) => console.error(error));
+      }
     }
   };
 
@@ -81,26 +106,61 @@ async function main() {
   renderPartyHighlights(timeline, 6);
   renderPartyTrendChart("party-trend-chart", timeline);
 
-  const compensationDashboard = await initCompensationDashboard();
-  const partyMapDashboard = await initPartyMapDashboard({ elections, candidates });
-  const searchDashboard = initElectionSearchDashboard({ elections, candidates });
+  let compensationInitPromise;
+  const ensureCompensationReady = () => {
+    if (!compensationInitPromise) {
+      compensationInitPromise = initCompensationDashboard();
+    }
+    return compensationInitPromise;
+  };
+
+  let partyMapInitPromise;
+  const ensurePartyMapReady = () => {
+    if (!partyMapInitPromise) {
+      partyMapInitPromise = initPartyMapDashboard({ elections, candidates });
+    }
+    return partyMapInitPromise;
+  };
+
+  let searchInitPromise;
+  const ensureSearchReady = () => {
+    if (!searchInitPromise) {
+      searchInitPromise = Promise.resolve().then(() =>
+        initElectionSearchDashboard({ elections, candidates }),
+      );
+    }
+    return searchInitPromise;
+  };
+
+  scheduleDeferredWork(() => ensureCompensationReady());
+  scheduleDeferredWork(() => ensurePartyMapReady());
+  scheduleDeferredWork(() => ensureSearchReady());
 
   setupViewSwitching({
-    "compensation-dashboard": () => {
-      requestAnimationFrame(() => {
-        compensationDashboard?.resize();
-      });
-    },
-    "choropleth-dashboard": () => {
-      requestAnimationFrame(() => {
-        partyMapDashboard?.resize();
-      });
-    },
-    "search-dashboard": () => {
-      requestAnimationFrame(() => {
-        searchDashboard?.resize();
-      });
-    },
+    "compensation-dashboard": () =>
+      ensureCompensationReady()
+        .then((dashboard) => {
+          requestAnimationFrame(() => {
+            dashboard?.resize?.();
+          });
+        })
+        .catch((error) => console.error(error)),
+    "choropleth-dashboard": () =>
+      ensurePartyMapReady()
+        .then((dashboard) => {
+          requestAnimationFrame(() => {
+            dashboard?.resize?.();
+          });
+        })
+        .catch((error) => console.error(error)),
+    "search-dashboard": () =>
+      ensureSearchReady()
+        .then((dashboard) => {
+          requestAnimationFrame(() => {
+            dashboard?.resize?.();
+          });
+        })
+        .catch((error) => console.error(error)),
   });
 }
 
