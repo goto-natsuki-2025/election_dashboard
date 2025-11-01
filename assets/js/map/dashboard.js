@@ -101,6 +101,15 @@ function determineCouncilType(candidate) {
   return COUNCIL_TYPES.COMBINED;
 }
 
+function isGeneralMunicipalElection(value) {
+  const text = normaliseString(value);
+  if (!text) return false;
+  const trimmed = text
+    .replace(/\.html?$/iu, "")
+    .replace(/(?:[_\-\s])?\d{6,8}$/u, "");
+  return /(市|町|村|区)議会議員選挙$/u.test(trimmed);
+}
+
 function createAggregationState() {
   return {
     events: new Map(),
@@ -421,6 +430,15 @@ function aggregatePartySeatsByYear(candidates, { termYears = TERM_YEARS } = {}) 
     if (!municipalityKey) continue;
 
     const councilType = determineCouncilType(candidate);
+    if (
+      councilType === COUNCIL_TYPES.MUNICIPAL &&
+      !(
+        isGeneralMunicipalElection(candidate.source_key) ||
+        isGeneralMunicipalElection(candidate.source_file)
+      )
+    ) {
+      continue;
+    }
     const eventKey = `${municipalityKey}::${electionDate.getTime()}::${councilType}`;
     let event = eventsByMunicipality.get(eventKey);
     if (!event) {
@@ -873,7 +891,7 @@ export async function initPartyMapDashboard({ candidates }) {
     if (municipalYearCache.has(year)) {
       return municipalYearCache.get(year);
     }
-    const emptyResult = { totals: new Map(), partyMaps: new Map() };
+    const emptyResult = { totals: new Map(), partySeats: new Map() };
     if (!municipalContainer || !municipalResources) {
       municipalYearCache.set(year, emptyResult);
       return emptyResult;
@@ -884,7 +902,7 @@ export async function initPartyMapDashboard({ candidates }) {
       return emptyResult;
     }
     const totals = new Map();
-    const partyMaps = new Map();
+    const partySeats = new Map();
     rawYear.forEach((entry, municipalityKey) => {
       if (!entry) return;
       const codeRaw = resolveMunicipalityCode(
@@ -896,24 +914,22 @@ export async function initPartyMapDashboard({ candidates }) {
       if (!code) return;
       const totalSeats = Number(entry.total ?? 0);
       if (!Number.isFinite(totalSeats) || totalSeats <= 0) return;
-      totals.set(code, totalSeats);
+      const currentTotal = totals.get(code) ?? 0;
+      totals.set(code, Math.max(currentTotal, totalSeats));
       if (entry.parties instanceof Map) {
         entry.parties.forEach((seats, party) => {
           const seatsNumber = Number(seats ?? 0);
           if (!Number.isFinite(seatsNumber) || seatsNumber < 0) return;
-          if (!partyMaps.has(party)) {
-            partyMaps.set(party, new Map());
+          let seatMap = partySeats.get(party);
+          if (!seatMap) {
+            seatMap = new Map();
+            partySeats.set(party, seatMap);
           }
-          const ratio = totalSeats > 0 ? seatsNumber / totalSeats : 0;
-          partyMaps.get(party).set(code, {
-            seats: seatsNumber,
-            total: totalSeats,
-            ratio,
-          });
+          seatMap.set(code, (seatMap.get(code) ?? 0) + seatsNumber);
         });
       }
     });
-    const result = { totals, partyMaps };
+    const result = { totals, partySeats };
     municipalYearCache.set(year, result);
     return result;
   };
@@ -950,7 +966,21 @@ export async function initPartyMapDashboard({ candidates }) {
   const getMetricsFor = (mode, year, party) => {
     if (mode === COUNCIL_TYPES.MUNICIPAL) {
       const dataset = resolveMunicipalYearData(year);
-      return dataset.partyMaps.get(party) ?? new Map();
+      const totals = dataset.totals ?? new Map();
+      const seatMap = dataset.partySeats.get(party);
+      if (!(seatMap instanceof Map)) return new Map();
+      const metrics = new Map();
+      seatMap.forEach((seatCount, code) => {
+        const totalSeats = totals.get(code);
+        if (!Number.isFinite(totalSeats) || totalSeats <= 0) return;
+        const seats = Math.max(0, Math.min(seatCount, totalSeats));
+        metrics.set(code, {
+          seats,
+          total: totalSeats,
+          ratio: totalSeats > 0 ? seats / totalSeats : 0,
+        });
+      });
+      return metrics;
     }
     const container = getAggregationForMode(mode);
     const partyMap = container?.partyShareByYear?.get?.(year);
