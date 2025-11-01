@@ -1,34 +1,28 @@
-import { ungzip } from "https://cdn.jsdelivr.net/npm/pako@2.1.0/+esm";
-
 import { DATA_PATH } from "./constants.js";
 import {
   ensurePartyName,
+  fetchGzipJson,
   normaliseString,
   parseYYYYMMDD,
 } from "./utils.js";
 
+const toNumber = (value) => {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+};
+
 export async function loadElectionSummary() {
-  const text = await fetch(DATA_PATH.elections).then((response) => {
-    if (!response.ok) {
-      throw new Error("election_summary.csv の取得に失敗しました");
-    }
-    return response.text();
-  });
+  const payload = await fetchGzipJson(DATA_PATH.elections);
+  const records = Array.isArray(payload?.records) ? payload.records : [];
 
-  const parsed = Papa.parse(text, {
-    header: true,
-    dynamicTyping: false,
-    skipEmptyLines: true,
-  });
-
-  return parsed.data
+  return records
     .map((row) => ({
       election_name: normaliseString(row.election_name),
       notice_date: row.notice_date ? new Date(row.notice_date) : null,
       election_day: row.election_day ? new Date(row.election_day) : null,
-      seats: Number(row.seats) || null,
-      candidate_count: Number(row.candidate_count) || null,
-      registered_voters: Number(row.registered_voters) || null,
+      seats: toNumber(row.seats),
+      candidate_count: toNumber(row.candidate_count),
+      registered_voters: toNumber(row.registered_voters),
       note: normaliseString(row.note),
     }))
     .filter(
@@ -56,53 +50,56 @@ export function buildSummaryIndex(elections) {
   return index;
 }
 
-export async function loadCandidateDetails(summaryIndex) {
-  const response = await fetch(DATA_PATH.candidates);
-  if (!response.ok) {
-    throw new Error("candidate_details.csv.gz の取得に失敗しました");
-  }
-
-  const buffer = await response.arrayBuffer();
-  const text = new TextDecoder("utf-8").decode(ungzip(new Uint8Array(buffer)));
-  const parsed = Papa.parse(text, {
-    header: true,
-    dynamicTyping: false,
-    skipEmptyLines: true,
-  });
-
-  return parsed.data.map((row) => {
-    const rawSource = normaliseString(row.source_file);
-    const cleanedSource = rawSource.replace(/\.html$/, "");
-    const match = cleanedSource.match(/^(.*)_(\d{8})$/);
-    const electionKey = match ? normaliseString(match[1]) : cleanedSource;
-    const electionDateCode = match ? match[2] : null;
-    let electionDate = parseYYYYMMDD(electionDateCode);
-
-    if (!electionDate) {
-      const summaryList = summaryIndex.get(electionKey);
-      if (summaryList && summaryList.length > 0) {
-        electionDate = summaryList[0].election_day;
-      }
+function resolveElectionDate(row, electionKey, summaryIndex) {
+  if (row.election_date) {
+    const parsed = new Date(row.election_date);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed;
     }
+  }
+  if (row.source_date_code) {
+    const parsed = parseYYYYMMDD(row.source_date_code);
+    if (parsed instanceof Date && !Number.isNaN(parsed.getTime())) {
+      return parsed;
+    }
+  }
+  if (summaryIndex instanceof Map && summaryIndex.has(electionKey)) {
+    const [latest] = summaryIndex.get(electionKey);
+    if (latest?.election_day instanceof Date) {
+      return latest.election_day;
+    }
+  }
+  return null;
+}
 
-    const ageValue = Number(row.age);
-    const votesValue = Number(row.votes);
+export async function loadCandidateDetails(summaryIndex) {
+  const payload = await fetchGzipJson(DATA_PATH.candidates);
+  const records = Array.isArray(payload?.records) ? payload.records : [];
+  const index = summaryIndex instanceof Map ? summaryIndex : new Map();
+
+  return records.map((row) => {
+    const rawSource = normaliseString(row.source_file);
+    const fallbackKey = rawSource.replace(/\.html$/i, "");
+    const electionKey = normaliseString(row.source_key || fallbackKey);
+    const electionDate = resolveElectionDate(row, electionKey, index);
+    const ageValue = toNumber(row.age);
+    const votesValue = toNumber(row.votes);
 
     return {
       candidate_id: normaliseString(row.candidate_id),
       name: normaliseString(row.name),
       kana: normaliseString(row.kana),
-      age: Number.isFinite(ageValue) ? ageValue : null,
+      age: ageValue,
       gender: normaliseString(row.gender),
       incumbent_status: normaliseString(row.incumbent_status),
       profession: normaliseString(row.profession),
       party: ensurePartyName(row.party),
-      votes: Number.isFinite(votesValue) ? votesValue : null,
+      votes: votesValue,
       outcome: normaliseString(row.outcome),
       image_file: normaliseString(row.image_file),
       source_file: rawSource,
       source_key: electionKey,
-      source_date_code: electionDateCode,
+      source_date_code: row.source_date_code ?? null,
       election_date: electionDate,
     };
   });
