@@ -342,7 +342,10 @@ function createLegendMarkup(breaks) {
 
 function formatPercent(value) {
   if (!Number.isFinite(value)) return "-";
-  return `${Math.round(value * 100)}%`;
+  const percent = Number(value) * 100;
+  const rounded = Math.round(percent * 10) / 10;
+  const display = Math.abs(rounded) === 0 ? 0 : rounded;
+  return `${display.toFixed(1)}%`;
 }
 
 function renderSummaryText({ year, party, coveredPrefectures, availablePrefectures, maxPrefName, maxRatio, seatSum }) {
