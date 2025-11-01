@@ -2,11 +2,8 @@ import {
   buildSummaryIndex,
   loadCandidateDetails,
   loadElectionSummary,
+  loadTopDashboardData,
 } from "./data-loaders.js";
-import {
-  buildElectionEvents,
-  buildPartyTimeline,
-} from "./aggregations.js";
 import {
   renderPartyHighlights,
   renderPartyTrendChart,
@@ -15,28 +12,6 @@ import {
 import { initCompensationDashboard } from "./compensation/dashboard.js";
 import { initElectionSearchDashboard } from "./search/dashboard.js";
 import { initPartyMapDashboard } from "./map/dashboard.js";
-
-function isPromiseLike(value) {
-  return value && typeof value.then === "function";
-}
-
-function scheduleDeferredWork(task) {
-  const run = () => {
-    try {
-      const result = task();
-      if (isPromiseLike(result)) {
-        result.catch((error) => console.error(error));
-      }
-    } catch (error) {
-      console.error(error);
-    }
-  };
-  if (typeof window !== "undefined" && typeof window.requestIdleCallback === "function") {
-    window.requestIdleCallback(() => run(), { timeout: 2000 });
-    return;
-  }
-  setTimeout(run, 0);
-}
 
 function setupViewSwitching(activations = {}) {
   const tabs = document.querySelectorAll(".dashboard-tab");
@@ -56,9 +31,13 @@ function setupViewSwitching(activations = {}) {
 
     const callback = activations[targetId];
     if (typeof callback === "function") {
-      const result = callback();
-      if (isPromiseLike(result)) {
-        result.catch((error) => console.error(error));
+      try {
+        const result = callback();
+        if (result && typeof result.then === "function") {
+          result.catch((error) => console.error(error));
+        }
+      } catch (error) {
+        console.error(error);
       }
     }
   };
@@ -81,30 +60,38 @@ function setupViewSwitching(activations = {}) {
 }
 
 async function main() {
-  const elections = await loadElectionSummary();
-  const summaryIndex = buildSummaryIndex(elections);
-  const candidates = await loadCandidateDetails(summaryIndex);
-
-  const { events, municipalityCount } = buildElectionEvents(candidates);
-  if (events.length === 0) {
-    throw new Error("No election data matched the aggregation criteria");
+  const topDashboard = await loadTopDashboardData();
+  if (
+    !Array.isArray(topDashboard.timeline?.dateLabels) ||
+    topDashboard.timeline.dateLabels.length === 0
+  ) {
+    throw new Error("Top dashboard data did not contain any timeline entries");
   }
+  renderSummary(topDashboard.summary);
+  renderPartyHighlights(topDashboard.timeline, 6);
+  renderPartyTrendChart("party-trend-chart", topDashboard.timeline);
 
-  const timeline = buildPartyTimeline(events, { topN: 8 });
-  if (timeline.series.length === 0 || timeline.dateLabels.length === 0) {
-    throw new Error("Insufficient data to build the party timeline");
-  }
+  let electionsPromise;
+  const ensureElections = () => {
+    if (!electionsPromise) {
+      electionsPromise = loadElectionSummary();
+    }
+    return electionsPromise;
+  };
 
-  renderSummary({
-    municipalityCount,
-    totalSeats: timeline.totalSeats,
-    partyCount: timeline.parties.length,
-    minDate: timeline.minDate,
-    maxDate: timeline.maxDate,
-  });
-
-  renderPartyHighlights(timeline, 6);
-  renderPartyTrendChart("party-trend-chart", timeline);
+  let candidateBundlePromise;
+  const ensureCandidateBundle = () => {
+    if (!candidateBundlePromise) {
+      candidateBundlePromise = ensureElections().then((elections) => {
+        const summaryIndex = buildSummaryIndex(elections);
+        return loadCandidateDetails(summaryIndex).then((candidates) => ({
+          elections,
+          candidates,
+        }));
+      });
+    }
+    return candidateBundlePromise;
+  };
 
   let compensationInitPromise;
   const ensureCompensationReady = () => {
@@ -117,7 +104,9 @@ async function main() {
   let partyMapInitPromise;
   const ensurePartyMapReady = () => {
     if (!partyMapInitPromise) {
-      partyMapInitPromise = initPartyMapDashboard({ elections, candidates });
+      partyMapInitPromise = ensureCandidateBundle().then(({ candidates }) =>
+        initPartyMapDashboard({ candidates }),
+      );
     }
     return partyMapInitPromise;
   };
@@ -125,16 +114,12 @@ async function main() {
   let searchInitPromise;
   const ensureSearchReady = () => {
     if (!searchInitPromise) {
-      searchInitPromise = Promise.resolve().then(() =>
+      searchInitPromise = ensureCandidateBundle().then(({ elections, candidates }) =>
         initElectionSearchDashboard({ elections, candidates }),
       );
     }
     return searchInitPromise;
   };
-
-  scheduleDeferredWork(() => ensureCompensationReady());
-  scheduleDeferredWork(() => ensurePartyMapReady());
-  scheduleDeferredWork(() => ensureSearchReady());
 
   setupViewSwitching({
     "compensation-dashboard": () =>

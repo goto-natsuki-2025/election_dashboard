@@ -1,4 +1,5 @@
 ﻿export const DATA_PATH = {
+  top: "data/top_dashboard.json.gz",
   elections: "data/election_summary.json.gz",
   candidates: "data/candidate_details.json.gz",
   compensation: "data/compensation.json.gz",
