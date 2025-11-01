@@ -1,7 +1,8 @@
 import { PREFECTURES, PREFECTURE_NAME_BY_CODE, TERM_YEARS } from "../constants.js";
-import { isWinningOutcome, normaliseString } from "../utils.js";
+import { fetchGzipJson, isWinningOutcome, normaliseString } from "../utils.js";
 
-const GEOJSON_PATH = "assets/data/japan.geojson";
+const PREFECTURE_GEOJSON_PATH = "assets/data/japan.geojson";
+const MUNICIPAL_TOPO_PATH = "assets/data/municipal.topojson.gz";
 const COLOR_PALETTE = [
   "#f8fafc",
   "#e2f3ff",
@@ -19,15 +20,38 @@ const COUNCIL_TYPES = {
 };
 
 const COUNCIL_SCOPE_META = {
-  [COUNCIL_TYPES.COMBINED]: { label: "全自治体（合算）", legendLabel: "議席率" },
-  [COUNCIL_TYPES.PREFECTURE]: { label: "都道府県議会", legendLabel: "都道府県議会議席率" },
-  [COUNCIL_TYPES.MUNICIPAL]: { label: "市区町村議会", legendLabel: "市区町村議会議席率" },
+  [COUNCIL_TYPES.COMBINED]: {
+    label: "全自治体（合算）",
+    legendLabel: "議席率",
+    unitLabel: "都道府県",
+  },
+  [COUNCIL_TYPES.PREFECTURE]: {
+    label: "都道府県議会",
+    legendLabel: "都道府県議会議席率",
+    unitLabel: "都道府県",
+  },
+  [COUNCIL_TYPES.MUNICIPAL]: {
+    label: "市区町村議会",
+    legendLabel: "市区町村議会議席率",
+    unitLabel: "市区町村",
+  },
 };
 
 const PREFECTURE_COUNCIL_KEYWORDS = ["都議会", "道議会", "府議会", "県議会"];
 const MUNICIPAL_COUNCIL_KEYWORDS = ["市議会", "区議会", "町議会", "村議会"];
 
 const PREFECTURE_PATTERNS = buildPrefecturePatterns();
+const PREFECTURE_CODE_BY_NAME = (() => {
+  const map = new Map();
+  for (const prefecture of PREFECTURES) {
+    const names = [prefecture.name, ...(prefecture.aliases ?? [])];
+    for (const name of names) {
+      if (!name) continue;
+      map.set(normaliseString(name), prefecture.code);
+    }
+  }
+  return map;
+})();
 
 function buildPrefecturePatterns() {
   const suffixPattern = /(都|道|府|県)$/u;
@@ -144,7 +168,7 @@ function removeExpiredEntriesFromState(state, year) {
   }
 }
 
-function snapshotState(state) {
+function snapshotState(state, { includeMunicipalities = false } = {}) {
   const prefTotalsSnapshot = new Map();
   const partyShareSnapshot = new Map();
   state.prefectures.forEach((prefState, prefCode) => {
@@ -169,10 +193,29 @@ function snapshotState(state) {
     partyTotalsSnapshot.set(party, seats);
   });
 
+  let municipalitySnapshot = null;
+  if (includeMunicipalities) {
+    municipalitySnapshot = new Map();
+    state.events.forEach((entry, key) => {
+      const parties = new Map();
+      entry.parties.forEach((seats, party) => {
+        if (Number.isFinite(seats) && seats > 0) {
+          parties.set(party, seats);
+        }
+      });
+      municipalitySnapshot.set(key, {
+        prefectureCode: entry.prefectureCode,
+        total: entry.total,
+        parties,
+      });
+    });
+  }
+
   return {
     totalsByPrefecture: prefTotalsSnapshot,
     partyShare: partyShareSnapshot,
     partyTotals: partyTotalsSnapshot,
+    municipalities: municipalitySnapshot,
   };
 }
 
@@ -193,6 +236,169 @@ function hasSeatsForContainer(container) {
     }
   }
   return false;
+}
+
+function normalizeForMatching(value) {
+  return normaliseString(value)
+    .replace(/[_\s\u3000・･~〜\\/-]/g, "")
+    .replace(/[－―‐−]/g, "")
+    .replace(/[()（）]/g, "")
+    .replace(/ヶ/g, "ケ")
+    .replace(/ヵ/g, "カ")
+    .replace(/゙/gu, "")
+    .toLowerCase();
+}
+
+function cleanMunicipalityKey(raw) {
+  if (!raw) return "";
+  let text = normaliseString(raw);
+  text = text.replace(/[_／／\\-]\d{4,}$/u, "");
+  text = text.replace(/\d{4,}$/u, "");
+  text = text.replace(/（.*?）/gu, "");
+  text = text.replace(/\(.*?\)/g, "");
+  text = text.replace(/第[0-9０-９]+回/gu, "");
+  text = text.replace(/(補欠|再|出直し|解散|統一|臨時)?選挙.*$/gu, "");
+  text = text.replace(/議会議員/gu, "");
+  text = text.replace(/議員/gu, "");
+  text = text.replace(/議会/gu, "");
+  text = text.replace(/(?:市長|町長|村長)選.*$/gu, "");
+  return normalizeForMatching(text);
+}
+
+function buildMunicipalitySearchKey(raw, prefectureCode) {
+  const cleaned = cleanMunicipalityKey(raw);
+  if (!prefectureCode) return cleaned;
+  const prefName = PREFECTURE_NAME_BY_CODE[prefectureCode];
+  if (!prefName) return cleaned;
+  const prefNorm = normalizeForMatching(prefName);
+  return cleaned.replace(prefNorm, "");
+}
+
+let topojsonClientPromise = null;
+function ensureTopojsonClient() {
+  if (!topojsonClientPromise) {
+    topojsonClientPromise = import("https://cdn.jsdelivr.net/npm/topojson-client@3/+esm");
+  }
+  return topojsonClientPromise;
+}
+
+function buildMunicipalityPatternIndex(features) {
+  const index = new Map();
+  const addPattern = (set, value) => {
+    const normalized = normalizeForMatching(value);
+    if (normalized) {
+      set.add(normalized);
+    }
+  };
+  for (const feature of features) {
+    const props = feature.properties ?? {};
+    const prefCode = normaliseString(props.pref_code) || null;
+    const municipalityCode = normaliseString(props.municipality_code) || null;
+    if (!prefCode || !municipalityCode) continue;
+    const patterns = new Set();
+    const cityName = normaliseString(props.city_name ?? "");
+    const wardName = normaliseString(props.ward_name ?? "");
+    const localName = props.local_name ?? (wardName ? `${cityName}${wardName}` : cityName);
+    if (cityName) {
+      addPattern(patterns, cityName);
+      const trimmed = cityName.replace(/(市|区|町|村)$/u, "");
+      if (trimmed && trimmed !== cityName) {
+        addPattern(patterns, trimmed);
+      }
+    }
+    if (wardName) {
+      addPattern(patterns, wardName);
+      addPattern(patterns, `${cityName}${wardName}`);
+      const trimmedWard = wardName.replace(/区$/u, "");
+      if (trimmedWard && trimmedWard !== wardName) {
+        addPattern(patterns, `${cityName}${trimmedWard}`);
+        addPattern(patterns, trimmedWard);
+      }
+    }
+    addPattern(patterns, localName);
+    const entries = index.get(prefCode) ?? [];
+    entries.push({
+      code: municipalityCode,
+      patterns: Array.from(patterns).sort((a, b) => b.length - a.length),
+      fullName: props.region_name ?? localName,
+    });
+    index.set(prefCode, entries);
+  }
+  return index;
+}
+
+async function prepareMunicipalityFeatures(rawTopoJson) {
+  const topojson = await ensureTopojsonClient();
+  const objectKeys = rawTopoJson?.objects ? Object.keys(rawTopoJson.objects) : [];
+  const objectName = objectKeys.find((key) => rawTopoJson.objects[key]?.type === "GeometryCollection") ?? objectKeys[0];
+  if (!objectName) {
+    throw new Error("municipal topojson does not contain a geometry collection");
+  }
+  const geojson = topojson.feature(rawTopoJson, rawTopoJson.objects[objectName]);
+  if (!geojson || !Array.isArray(geojson.features)) {
+    throw new Error("Failed to convert municipal TopoJSON to GeoJSON");
+  }
+  const features = geojson.features.map((feature) => {
+    const props = feature.properties ?? {};
+    const prefName = normaliseString(props.N03_001 ?? "");
+    const cityName = normaliseString(props.N03_004 ?? "");
+    const wardName = normaliseString(props.N03_005 ?? "");
+    const municipalityCode = normaliseString(props.N03_007 ?? "");
+    const prefCode =
+      PREFECTURE_CODE_BY_NAME.get(normaliseString(prefName)) ??
+      (municipalityCode ? municipalityCode.slice(0, 2).padStart(2, "0") : null);
+    const localName = wardName ? `${cityName}${wardName}` : cityName;
+    const regionName = prefName ? `${prefName}${localName}` : localName;
+    return {
+      type: "Feature",
+      id: municipalityCode || `${prefCode ?? "00"}-${localName}`,
+      geometry: feature.geometry,
+      properties: {
+        ...props,
+        municipality_code: municipalityCode || null,
+        pref_code: prefCode,
+        city_name: cityName,
+        ward_name: wardName,
+        region_name: regionName,
+        local_name: localName,
+        region_id: municipalityCode || `${prefCode ?? "00"}-${localName}`,
+      },
+    };
+  });
+  const patternIndex = buildMunicipalityPatternIndex(features);
+  const featureMap = new Map(
+    features
+      .filter((feature) => normaliseString(feature.properties?.municipality_code))
+      .map((feature) => [normaliseString(feature.properties.municipality_code), feature]),
+  );
+  return { features, patternIndex, featureMap };
+}
+
+function resolveMunicipalityCode(prefectureCode, municipalityKey, index) {
+  if (!prefectureCode || !municipalityKey || !(index instanceof Map)) {
+    return null;
+  }
+  const entries = index.get(prefectureCode);
+  if (!entries || entries.length === 0) return null;
+  const searchKey = buildMunicipalitySearchKey(municipalityKey, prefectureCode);
+  if (!searchKey) return null;
+  let bestMatch = null;
+  for (const entry of entries) {
+    for (const pattern of entry.patterns) {
+      if (!pattern) continue;
+      if (searchKey.includes(pattern)) {
+        if (!bestMatch || pattern.length > bestMatch.length) {
+          bestMatch = { length: pattern.length, code: entry.code };
+        }
+      }
+    }
+  }
+  return bestMatch?.code ?? null;
+}
+
+async function loadMunicipalResources() {
+  const rawTopo = await fetchGzipJson(MUNICIPAL_TOPO_PATH);
+  return prepareMunicipalityFeatures(rawTopo);
 }
 
 function aggregatePartySeatsByYear(candidates, { termYears = TERM_YEARS } = {}) {
@@ -270,6 +476,7 @@ function aggregatePartySeatsByYear(candidates, { termYears = TERM_YEARS } = {}) 
       totalsByYearPrefecture: new Map(),
       partyShareByYear: new Map(),
       partyTotalsByYear: new Map(),
+      municipalitiesByYear: new Map(),
     },
   };
 
@@ -298,10 +505,15 @@ function aggregatePartySeatsByYear(candidates, { termYears = TERM_YEARS } = {}) 
       const state = statesByType[type];
       const resultContainer = resultsByType[type];
       if (!state || !resultContainer) return;
-      const snapshot = snapshotState(state);
+      const snapshot = snapshotState(state, {
+        includeMunicipalities: type === COUNCIL_TYPES.MUNICIPAL,
+      });
       resultContainer.totalsByYearPrefecture.set(year, snapshot.totalsByPrefecture);
       resultContainer.partyShareByYear.set(year, snapshot.partyShare);
       resultContainer.partyTotalsByYear.set(year, snapshot.partyTotals);
+      if (snapshot.municipalities && resultContainer.municipalitiesByYear) {
+        resultContainer.municipalitiesByYear.set(year, snapshot.municipalities);
+      }
     });
   }
 
@@ -337,6 +549,11 @@ function prepareBaseFeatures(rawGeoJson) {
     if (!prefCode) {
       throw new Error("Failed to resolve prefecture code for GeoJSON feature");
     }
+    const regionName =
+      PREFECTURE_NAME_BY_CODE[prefCode] ??
+      normaliseString(feature?.properties?.nam_ja ?? "") ??
+      normaliseString(feature?.properties?.nam ?? "") ??
+      prefCode;
     return {
       type: "Feature",
       id: numericId ?? prefCode,
@@ -344,20 +561,22 @@ function prepareBaseFeatures(rawGeoJson) {
       properties: {
         ...feature.properties,
         pref_code: prefCode,
+        region_id: prefCode,
+        region_name: regionName,
       },
     };
   });
 }
 
-function buildFeatureCollection(baseFeatures, partyMetrics, totalsByPrefecture) {
+function buildFeatureCollection(baseFeatures, partyMetrics, totalsByRegion) {
   return {
     type: "FeatureCollection",
     features: baseFeatures.map((feature) => {
-      const prefCode = feature.properties.pref_code;
-      const metrics = partyMetrics?.get(prefCode) ?? null;
+      const regionId = feature.properties?.region_id ?? feature.properties?.pref_code;
+      const metrics = regionId ? partyMetrics?.get(regionId) ?? null : null;
       const totalValue =
-        typeof totalsByPrefecture?.get === "function"
-          ? totalsByPrefecture.get(prefCode)
+        regionId && typeof totalsByRegion?.get === "function"
+          ? totalsByRegion.get(regionId)
           : null;
       const totalSeats =
         Number.isFinite(totalValue) && totalValue !== null ? Number(totalValue) : 0;
@@ -434,13 +653,14 @@ function renderSummaryText({
   year,
   party,
   scopeLabel,
-  coveredPrefectures,
-  availablePrefectures,
-  maxPrefName,
+  unitLabel,
+  coveredRegions,
+  availableRegions,
+  maxRegionName,
   maxRatio,
   seatSum,
 }) {
-  return `${year}年、${scopeLabel}で${party}は${coveredPrefectures} / ${availablePrefectures} 都道府県で議席を獲得し、最大は<strong>${maxPrefName}の${formatPercent(maxRatio)}（${seatSum.toLocaleString("ja-JP")}議席）</strong>です。`;
+  return `${year}年、${scopeLabel}で${party}は${coveredRegions} / ${availableRegions} ${unitLabel}で議席を獲得し、最大は<strong>${maxRegionName}の${formatPercent(maxRatio)}（${seatSum.toLocaleString("ja-JP")}議席）</strong>です。`;
 }
 
 function updateLegend(container, selectedParty, scopeMeta, breaks) {
@@ -483,33 +703,53 @@ function buildLegendBreaks(stops) {
   return labels;
 }
 
-function updateSummary(element, selectedParty, metrics, totalsByPrefecture, year, scopeMeta) {
+function updateSummary(
+  element,
+  selectedParty,
+  metrics,
+  totalsByRegion,
+  year,
+  scopeMeta,
+  resolveRegionName,
+) {
   if (!element) return;
   if (!(metrics instanceof Map) || metrics.size === 0) {
     element.textContent = `${year}年の${scopeMeta.label}における${selectedParty}当選データを検出できませんでした。`;
     return;
   }
-  let maxPref = null;
+  let maxRegionKey = null;
   let maxValue = 0;
   let seatSum = 0;
-  metrics.forEach((entry, prefCode) => {
-    seatSum += entry.seats;
-    if (entry.ratio > maxValue) {
-      maxValue = entry.ratio;
-      maxPref = prefCode;
+  metrics.forEach((entry, regionKey) => {
+    const seats = Number(entry?.seats ?? 0);
+    seatSum += seats;
+    const ratio = Number(entry?.ratio ?? 0);
+    if (ratio > maxValue) {
+      maxValue = ratio;
+      maxRegionKey = regionKey;
     }
   });
-  const coveredPrefectures = metrics.size;
-  const availablePrefectures = totalsByPrefecture?.size ?? 0;
-  const maxPrefName =
-    (maxPref && PREFECTURE_NAME_BY_CODE[maxPref]) || maxPref || "―";
+  const coveredRegions = metrics.size;
+  const availableRegions = totalsByRegion?.size ?? 0;
+  const resolver =
+    typeof resolveRegionName === "function"
+      ? resolveRegionName
+      : (regionKey) =>
+          scopeMeta.unitLabel === "都道府県"
+            ? PREFECTURE_NAME_BY_CODE[regionKey] ?? regionKey
+            : regionKey;
+  const maxRegionName =
+    (maxRegionKey !== null && maxRegionKey !== undefined
+      ? resolver(maxRegionKey, metrics.get(maxRegionKey) ?? null) ?? resolver(maxRegionKey)
+      : null) || "―";
   element.innerHTML = renderSummaryText({
     year,
     party: selectedParty,
     scopeLabel: scopeMeta.label,
-    coveredPrefectures,
-    availablePrefectures,
-    maxPrefName,
+    unitLabel: scopeMeta.unitLabel,
+    coveredRegions,
+    availableRegions,
+    maxRegionName,
     maxRatio: maxValue,
     seatSum,
   });
@@ -550,6 +790,9 @@ function prepareScopeSelect(select, options, defaultScope) {
     const opt = document.createElement("option");
     opt.value = option.value;
     opt.textContent = option.label;
+    if (!option.available) {
+      opt.disabled = true;
+    }
     if (option.value === fallback) {
       opt.selected = true;
     }
@@ -618,27 +861,71 @@ export async function initPartyMapDashboard({ candidates }) {
     return null;
   }
 
+  const municipalResourcesPromise = loadMunicipalResources().catch((error) => {
+    console.error(error);
+    return null;
+  });
+  const municipalContainer = aggregation.byCouncilType?.[COUNCIL_TYPES.MUNICIPAL];
+  const municipalYearCache = new Map();
+  let municipalResources = null;
+
+  const resolveMunicipalYearData = (year) => {
+    if (municipalYearCache.has(year)) {
+      return municipalYearCache.get(year);
+    }
+    const emptyResult = { totals: new Map(), partyMaps: new Map() };
+    if (!municipalContainer || !municipalResources) {
+      municipalYearCache.set(year, emptyResult);
+      return emptyResult;
+    }
+    const rawYear = municipalContainer.municipalitiesByYear?.get?.(year);
+    if (!(rawYear instanceof Map)) {
+      municipalYearCache.set(year, emptyResult);
+      return emptyResult;
+    }
+    const totals = new Map();
+    const partyMaps = new Map();
+    rawYear.forEach((entry, municipalityKey) => {
+      if (!entry) return;
+      const codeRaw = resolveMunicipalityCode(
+        normaliseString(entry.prefectureCode ?? ""),
+        municipalityKey,
+        municipalResources.patternIndex,
+      );
+      const code = normaliseString(codeRaw);
+      if (!code) return;
+      const totalSeats = Number(entry.total ?? 0);
+      if (!Number.isFinite(totalSeats) || totalSeats <= 0) return;
+      totals.set(code, totalSeats);
+      if (entry.parties instanceof Map) {
+        entry.parties.forEach((seats, party) => {
+          const seatsNumber = Number(seats ?? 0);
+          if (!Number.isFinite(seatsNumber) || seatsNumber < 0) return;
+          if (!partyMaps.has(party)) {
+            partyMaps.set(party, new Map());
+          }
+          const ratio = totalSeats > 0 ? seatsNumber / totalSeats : 0;
+          partyMaps.get(party).set(code, {
+            seats: seatsNumber,
+            total: totalSeats,
+            ratio,
+          });
+        });
+      }
+    });
+    const result = { totals, partyMaps };
+    municipalYearCache.set(year, result);
+    return result;
+  };
+
   const scopeOrder = [
     COUNCIL_TYPES.COMBINED,
     COUNCIL_TYPES.PREFECTURE,
     COUNCIL_TYPES.MUNICIPAL,
   ];
-  const scopeOptions = scopeOrder.map((value) => ({
-    value,
-    label: getScopeMeta(value).label,
-    available: hasSeatsForContainer(aggregation.byCouncilType?.[value]),
-  }));
-
-  const state = {
-    mode: prepareScopeSelect(scopeSelect, scopeOptions, COUNCIL_TYPES.COMBINED),
-    year: null,
-    party: "",
-  };
-
   const currentYear = new Date().getFullYear();
   const defaultYear =
     aggregation.years.find((year) => year === currentYear) ?? aggregation.years[0];
-  state.year = prepareYearSelect(yearSelect, aggregation.years, defaultYear);
 
   const getAggregationForMode = (mode) => {
     const container = aggregation.byCouncilType?.[mode];
@@ -661,21 +948,121 @@ export async function initPartyMapDashboard({ candidates }) {
   };
 
   const getMetricsFor = (mode, year, party) => {
+    if (mode === COUNCIL_TYPES.MUNICIPAL) {
+      const dataset = resolveMunicipalYearData(year);
+      return dataset.partyMaps.get(party) ?? new Map();
+    }
     const container = getAggregationForMode(mode);
     const partyMap = container?.partyShareByYear?.get?.(year);
     return partyMap instanceof Map ? partyMap.get(party) ?? new Map() : new Map();
   };
 
   const getTotalsFor = (mode, year) => {
+    if (mode === COUNCIL_TYPES.MUNICIPAL) {
+      const dataset = resolveMunicipalYearData(year);
+      return dataset.totals ?? new Map();
+    }
     const container = getAggregationForMode(mode);
     const map = container?.totalsByYearPrefecture?.get?.(year);
     return map instanceof Map ? map : new Map();
   };
 
+  let prefectureGeoJson;
+  try {
+    const response = await fetch(PREFECTURE_GEOJSON_PATH);
+    if (!response.ok) {
+      throw new Error(`Failed to load ${PREFECTURE_GEOJSON_PATH}`);
+    }
+    prefectureGeoJson = await response.json();
+  } catch (error) {
+    console.error(error);
+    showInfo("日本地図データの読み込みに失敗しました。ネットワーク接続をご確認ください。");
+    return {
+      resize: () => {},
+    };
+  }
+
+  try {
+    municipalResources = await municipalResourcesPromise;
+  } catch (error) {
+    municipalResources = null;
+  }
+
+  let prefectureFeatures;
+  try {
+    prefectureFeatures = prepareBaseFeatures(prefectureGeoJson);
+  } catch (error) {
+    console.error(error);
+    showInfo("GeoJSON から都道府県コードを解析できませんでした。データ構造をご確認ください。");
+    return {
+      resize: () => {},
+    };
+  }
+
+  const prefectureFeatureMap = new Map(
+    prefectureFeatures.map((feature) => [feature.properties.region_id, feature]),
+  );
+  const prefectureNameResolver = (code) =>
+    prefectureFeatureMap.get(code)?.properties?.region_name ??
+    PREFECTURE_NAME_BY_CODE[code] ??
+    code;
+
+  const geometryByMode = {
+    [COUNCIL_TYPES.COMBINED]: {
+      features: prefectureFeatures,
+      featureMap: prefectureFeatureMap,
+      nameResolver: prefectureNameResolver,
+    },
+    [COUNCIL_TYPES.PREFECTURE]: {
+      features: prefectureFeatures,
+      featureMap: prefectureFeatureMap,
+      nameResolver: prefectureNameResolver,
+    },
+  };
+
+  if (municipalResources && Array.isArray(municipalResources.features)) {
+    const municipalNameResolver = (code) => {
+      const normalized = normaliseString(code);
+      return (
+        municipalResources.featureMap.get(normalized)?.properties?.region_name ??
+        municipalResources.featureMap.get(code)?.properties?.region_name ??
+        code
+      );
+    };
+    geometryByMode[COUNCIL_TYPES.MUNICIPAL] = {
+      features: municipalResources.features,
+      featureMap: municipalResources.featureMap,
+      nameResolver: municipalNameResolver,
+    };
+  } else {
+    geometryByMode[COUNCIL_TYPES.MUNICIPAL] = geometryByMode[COUNCIL_TYPES.COMBINED];
+  }
+
+  const scopeOptions = scopeOrder.map((value) => ({
+    value,
+    label: getScopeMeta(value).label,
+    available:
+      hasSeatsForContainer(aggregation.byCouncilType?.[value]) &&
+      (value !== COUNCIL_TYPES.MUNICIPAL ||
+        (municipalResources && Array.isArray(municipalResources.features))),
+  }));
+
+  const state = {
+    mode: prepareScopeSelect(scopeSelect, scopeOptions, COUNCIL_TYPES.COMBINED),
+    year: null,
+    party: "",
+  };
+
+  state.year = prepareYearSelect(yearSelect, aggregation.years, defaultYear);
+
+  const getGeometryForMode = (mode) =>
+    geometryByMode[mode] ?? geometryByMode[COUNCIL_TYPES.COMBINED];
+
   const partiesForYear = getPartiesFor(state.mode, state.year);
   state.party = preparePartySelect(partySelect, partiesForYear, partiesForYear[0]?.party ?? "");
 
   const scopeMeta = getScopeMeta(state.mode);
+  const geometryForMode = getGeometryForMode(state.mode);
   const initialMetrics = getMetricsFor(state.mode, state.year, state.party);
   const initialTotals = getTotalsFor(state.mode, state.year);
   const initialStops = computeColorStops(initialMetrics);
@@ -702,34 +1089,10 @@ export async function initPartyMapDashboard({ candidates }) {
     initialTotals,
     state.year,
     scopeMeta,
+    geometryForMode.nameResolver,
   );
   mapContainer?.setAttribute("aria-label", `${scopeMeta.label}の${state.year}年 議席率地図`);
 
-  let geoJson;
-  try {
-    const response = await fetch(GEOJSON_PATH);
-    if (!response.ok) {
-      throw new Error(`Failed to load ${GEOJSON_PATH}`);
-    }
-    geoJson = await response.json();
-  } catch (error) {
-    console.error(error);
-    showInfo("日本地図データの読み込みに失敗しました。ネットワーク接続をご確認ください。");
-    return {
-      resize: () => {},
-    };
-  }
-
-  let baseFeatures;
-  try {
-    baseFeatures = prepareBaseFeatures(geoJson);
-  } catch (error) {
-    console.error(error);
-    showInfo("GeoJSON から都道府県コードを解析できませんでした。データ構造をご確認ください。");
-    return {
-      resize: () => {},
-    };
-  }
   const maplibre = globalThis.maplibregl;
   if (!maplibre) {
     showInfo("MapLibre GL JS が読み込まれていません。スクリプトタグを確認してください。");
@@ -777,32 +1140,30 @@ export async function initPartyMapDashboard({ candidates }) {
   root.querySelector(".choropleth-map-wrapper")?.appendChild(tooltip);
 
   let hoveredId = null;
+  const initialGeometry = getGeometryForMode(state.mode);
 
   const updateMapForSelection = (year, party, mode) => {
     const scope = getScopeMeta(mode);
+    const geometry = getGeometryForMode(mode);
     const metrics = getMetricsFor(mode, year, party);
     const totals = getTotalsFor(mode, year);
-    const data = buildFeatureCollection(
-      baseFeatures,
-      metrics,
-      totals,
-    );
-    const source = map.getSource("prefectures");
+    const data = buildFeatureCollection(geometry.features, metrics, totals);
+    const source = map.getSource("regions");
     if (source) {
       source.setData(data);
     }
     const colorStops = computeColorStops(metrics);
-    if (map.getLayer("prefecture-fill")) {
-      map.setPaintProperty("prefecture-fill", "fill-color", buildColorExpression(colorStops));
+    if (map.getLayer("region-fill")) {
+      map.setPaintProperty("region-fill", "fill-color", buildColorExpression(colorStops));
     }
     const legendItems =
       metrics instanceof Map && metrics.size > 0 ? buildLegendBreaks(colorStops) : [];
     const displayParty = party || "該当党派なし";
     mapContainer?.setAttribute("aria-label", `${scope.label}の${year}年 議席率地図`);
     updateLegend(legendContainer, displayParty, scope, legendItems);
-    updateSummary(summaryElement, displayParty, metrics, totals, year, scope);
+    updateSummary(summaryElement, displayParty, metrics, totals, year, scope, geometry.nameResolver);
     if (hoveredId !== null) {
-      map.setFeatureState({ source: "prefectures", id: hoveredId }, { hover: false });
+      map.setFeatureState({ source: "regions", id: hoveredId }, { hover: false });
       hoveredId = null;
     }
     if (!(metrics instanceof Map) || metrics.size === 0) {
@@ -813,16 +1174,16 @@ export async function initPartyMapDashboard({ candidates }) {
   };
 
   map.on("load", () => {
-    map.addSource("prefectures", {
+    map.addSource("regions", {
       type: "geojson",
-      data: buildFeatureCollection(baseFeatures, initialMetrics, initialTotals),
+      data: buildFeatureCollection(initialGeometry.features, initialMetrics, initialTotals),
       generateId: true,
     });
 
     map.addLayer({
-      id: "prefecture-fill",
+      id: "region-fill",
       type: "fill",
-      source: "prefectures",
+      source: "regions",
       paint: {
         "fill-color": buildColorExpression(initialStops),
         "fill-opacity": [
@@ -839,9 +1200,9 @@ export async function initPartyMapDashboard({ candidates }) {
     updateMapForSelection(state.year, state.party, state.mode);
 
     map.addLayer({
-      id: "prefecture-outline",
+      id: "region-outline",
       type: "line",
-      source: "prefectures",
+      source: "regions",
       paint: {
         "line-color": [
           "case",
@@ -858,30 +1219,25 @@ export async function initPartyMapDashboard({ candidates }) {
       },
     });
 
-    map.on("mousemove", "prefecture-fill", (event) => {
+    map.on("mousemove", "region-fill", (event) => {
       const feature = event.features?.[0];
       if (!feature) return;
-      const featureId = feature.id ?? feature.properties?.pref_code;
+      const featureId = feature.id ?? feature.properties?.region_id ?? feature.properties?.pref_code;
       if (hoveredId !== featureId) {
         if (hoveredId !== null) {
-          map.setFeatureState({ source: "prefectures", id: hoveredId }, { hover: false });
+          map.setFeatureState({ source: "regions", id: hoveredId }, { hover: false });
         }
         hoveredId = featureId;
-        map.setFeatureState({ source: "prefectures", id: hoveredId }, { hover: true });
+        map.setFeatureState({ source: "regions", id: hoveredId }, { hover: true });
       }
 
-      const prefCode = feature.properties?.pref_code;
-      const prefName =
-        PREFECTURE_NAME_BY_CODE[prefCode] ??
-        feature.properties?.nam_ja ??
-        feature.properties?.nam ??
-        "―";
+      const regionName = feature.properties?.region_name ?? "―";
       const ratio = Number(feature.properties?.party_ratio ?? 0);
       const seats = Number(feature.properties?.party_seats ?? 0);
       const total = Number(feature.properties?.total_seats ?? 0);
       tooltip.hidden = false;
       tooltip.innerHTML = `
-        <strong>${prefName}</strong>
+        <strong>${regionName}</strong>
         <span>${formatPercent(ratio)} (${seats.toLocaleString(
         "ja-JP",
       )} / ${total.toLocaleString("ja-JP")})</span>
@@ -890,9 +1246,9 @@ export async function initPartyMapDashboard({ candidates }) {
       tooltip.style.top = `${event.point.y + 16}px`;
     });
 
-    map.on("mouseleave", "prefecture-fill", () => {
+    map.on("mouseleave", "region-fill", () => {
       if (hoveredId !== null) {
-        map.setFeatureState({ source: "prefectures", id: hoveredId }, { hover: false });
+        map.setFeatureState({ source: "regions", id: hoveredId }, { hover: false });
         hoveredId = null;
       }
       tooltip.hidden = true;
