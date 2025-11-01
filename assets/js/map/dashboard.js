@@ -684,9 +684,16 @@ function renderSummaryText({
   availableRegions,
   maxRegionName,
   maxRatio,
-  seatSum,
+  maxSeats,
+  maxTotal,
+  extraNote,
 }) {
-  return `${year}年、${scopeLabel}で${party}は${coveredRegions} / ${availableRegions} ${unitLabel}で議席を獲得し、最大は<strong>${maxRegionName}の${formatPercent(maxRatio)}（${seatSum.toLocaleString("ja-JP")}議席）</strong>です。`;
+  const seatsText =
+    Number.isFinite(maxSeats) && Number.isFinite(maxTotal) && maxTotal > 0
+      ? `${maxSeats.toLocaleString("ja-JP")} / ${maxTotal.toLocaleString("ja-JP")}議席`
+      : `${maxSeats.toLocaleString("ja-JP")}議席`;
+  const noteText = extraNote ? ` ${extraNote}` : "";
+  return `${year}年、${scopeLabel}で${party}は${coveredRegions} / ${availableRegions} ${unitLabel}で議席を獲得し、最大は<strong>${maxRegionName}の${formatPercent(maxRatio)}（${seatsText}）</strong>です。${noteText}`;
 }
 
 function updateLegend(container, selectedParty, scopeMeta, breaks) {
@@ -740,15 +747,15 @@ function updateSummary(
 ) {
   if (!element) return;
   if (!(metrics instanceof Map) || metrics.size === 0) {
-    element.textContent = `${year}年の${scopeMeta.label}における${selectedParty}当選データを検出できませんでした。`;
+    element.textContent = `${year}年の${scopeMeta.label}における${selectedParty}当選データを検出できませんでした。${
+      scopeMeta.unitLabel === "市区町村" ? " 本選挙のみを対象に集計しています。" : ""
+    }`;
     return;
   }
   let maxRegionKey = null;
   let maxValue = 0;
-  let seatSum = 0;
   metrics.forEach((entry, regionKey) => {
     const seats = Number(entry?.seats ?? 0);
-    seatSum += seats;
     const ratio = Number(entry?.ratio ?? 0);
     if (ratio > maxValue) {
       maxValue = ratio;
@@ -757,6 +764,19 @@ function updateSummary(
   });
   const coveredRegions = metrics.size;
   const availableRegions = totalsByRegion?.size ?? 0;
+  const maxRegionEntry = maxRegionKey !== null ? metrics.get(maxRegionKey) ?? null : null;
+  const maxSeats = Number(
+    maxRegionEntry && Number.isFinite(maxRegionEntry?.seats) ? maxRegionEntry.seats : 0,
+  );
+  const fallbackTotal =
+    maxRegionKey !== null && totalsByRegion instanceof Map ? totalsByRegion.get(maxRegionKey) : 0;
+  const maxTotal = Number(
+    maxRegionEntry && Number.isFinite(maxRegionEntry?.total) && maxRegionEntry.total > 0
+      ? maxRegionEntry.total
+      : Number.isFinite(fallbackTotal)
+        ? fallbackTotal
+        : 0,
+  );
   const resolver =
     typeof resolveRegionName === "function"
       ? resolveRegionName
@@ -768,6 +788,10 @@ function updateSummary(
     (maxRegionKey !== null && maxRegionKey !== undefined
       ? resolver(maxRegionKey, metrics.get(maxRegionKey) ?? null) ?? resolver(maxRegionKey)
       : null) || "―";
+  const extraNote =
+    scopeMeta.unitLabel === "市区町村"
+      ? "本選挙（市区町村議会議員選挙）のみを対象に、補欠・再選等は除外しています。"
+      : "";
   element.innerHTML = renderSummaryText({
     year,
     party: selectedParty,
@@ -777,7 +801,9 @@ function updateSummary(
     availableRegions,
     maxRegionName,
     maxRatio: maxValue,
-    seatSum,
+    maxSeats,
+    maxTotal,
+    extraNote,
   });
 }
 
