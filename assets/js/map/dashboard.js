@@ -12,6 +12,21 @@ const COLOR_PALETTE = [
   "#1d4ed8",
 ];
 
+const COUNCIL_TYPES = {
+  COMBINED: "combined",
+  PREFECTURE: "prefecture",
+  MUNICIPAL: "municipal",
+};
+
+const COUNCIL_SCOPE_META = {
+  [COUNCIL_TYPES.COMBINED]: { label: "全自治体（合算）", legendLabel: "議席率" },
+  [COUNCIL_TYPES.PREFECTURE]: { label: "都道府県議会", legendLabel: "都道府県議会議席率" },
+  [COUNCIL_TYPES.MUNICIPAL]: { label: "市区町村議会", legendLabel: "市区町村議会議席率" },
+};
+
+const PREFECTURE_COUNCIL_KEYWORDS = ["都議会", "道議会", "府議会", "県議会"];
+const MUNICIPAL_COUNCIL_KEYWORDS = ["市議会", "区議会", "町議会", "村議会"];
+
 const PREFECTURE_PATTERNS = buildPrefecturePatterns();
 
 function buildPrefecturePatterns() {
@@ -50,6 +65,136 @@ function resolvePrefectureFromText(value) {
   return null;
 }
 
+function determineCouncilType(candidate) {
+  const sourceText = normaliseString(candidate?.source_file ?? candidate?.source_key ?? "");
+  if (!sourceText) return COUNCIL_TYPES.COMBINED;
+  if (PREFECTURE_COUNCIL_KEYWORDS.some((keyword) => sourceText.includes(keyword))) {
+    return COUNCIL_TYPES.PREFECTURE;
+  }
+  if (MUNICIPAL_COUNCIL_KEYWORDS.some((keyword) => sourceText.includes(keyword))) {
+    return COUNCIL_TYPES.MUNICIPAL;
+  }
+  return COUNCIL_TYPES.COMBINED;
+}
+
+function createAggregationState() {
+  return {
+    events: new Map(),
+    prefectures: new Map(),
+    partyTotals: new Map(),
+  };
+}
+
+function subtractEntryFromState(state, entry) {
+  const pref = state.prefectures.get(entry.prefectureCode);
+  if (!pref) return;
+  pref.total -= entry.total;
+  entry.parties.forEach((seats, party) => {
+    const next = (pref.parties.get(party) ?? 0) - seats;
+    if (next <= 0) {
+      pref.parties.delete(party);
+    } else {
+      pref.parties.set(party, next);
+    }
+    const totalNext = (state.partyTotals.get(party) ?? 0) - seats;
+    if (totalNext <= 0) {
+      state.partyTotals.delete(party);
+    } else {
+      state.partyTotals.set(party, totalNext);
+    }
+  });
+  if (pref.total <= 0) {
+    state.prefectures.delete(entry.prefectureCode);
+  }
+}
+
+function applyEventToState(state, event, termYears) {
+  const previous = state.events.get(event.municipalityKey);
+  if (previous) {
+    subtractEntryFromState(state, previous);
+  }
+
+  const nextEntry = {
+    prefectureCode: event.prefectureCode,
+    total: event.total,
+    parties: event.parties,
+    expiresAt:
+      new Date(event.date.getFullYear() + termYears, event.date.getMonth(), event.date.getDate()),
+  };
+  state.events.set(event.municipalityKey, nextEntry);
+
+  let pref = state.prefectures.get(event.prefectureCode);
+  if (!pref) {
+    pref = { total: 0, parties: new Map() };
+    state.prefectures.set(event.prefectureCode, pref);
+  }
+  pref.total += event.total;
+  event.parties.forEach((seats, party) => {
+    pref.parties.set(party, (pref.parties.get(party) ?? 0) + seats);
+    state.partyTotals.set(party, (state.partyTotals.get(party) ?? 0) + seats);
+  });
+}
+
+function removeExpiredEntriesFromState(state, year) {
+  const cutoff = new Date(year + 1, 0, 1).getTime();
+  for (const [municipalityKey, entry] of state.events.entries()) {
+    if (!entry.expiresAt || entry.expiresAt.getTime() >= cutoff) continue;
+    state.events.delete(municipalityKey);
+    subtractEntryFromState(state, entry);
+  }
+}
+
+function snapshotState(state) {
+  const prefTotalsSnapshot = new Map();
+  const partyShareSnapshot = new Map();
+  state.prefectures.forEach((prefState, prefCode) => {
+    if (prefState.total <= 0) return;
+    prefTotalsSnapshot.set(prefCode, prefState.total);
+    prefState.parties.forEach((seats, party) => {
+      let map = partyShareSnapshot.get(party);
+      if (!map) {
+        map = new Map();
+        partyShareSnapshot.set(party, map);
+      }
+      map.set(prefCode, {
+        seats,
+        total: prefState.total,
+        ratio: prefState.total > 0 ? seats / prefState.total : 0,
+      });
+    });
+  });
+
+  const partyTotalsSnapshot = new Map();
+  state.partyTotals.forEach((seats, party) => {
+    partyTotalsSnapshot.set(party, seats);
+  });
+
+  return {
+    totalsByPrefecture: prefTotalsSnapshot,
+    partyShare: partyShareSnapshot,
+    partyTotals: partyTotalsSnapshot,
+  };
+}
+
+function getScopeMeta(mode) {
+  return COUNCIL_SCOPE_META[mode] ?? COUNCIL_SCOPE_META[COUNCIL_TYPES.COMBINED];
+}
+
+function hasSeatsForContainer(container) {
+  if (!container || !(container.partyTotalsByYear instanceof Map)) {
+    return false;
+  }
+  for (const totals of container.partyTotalsByYear.values()) {
+    if (!(totals instanceof Map)) continue;
+    for (const seats of totals.values()) {
+      if (Number.isFinite(seats) && seats > 0) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 function aggregatePartySeatsByYear(candidates, { termYears = TERM_YEARS } = {}) {
   const eventsByMunicipality = new Map();
 
@@ -69,7 +214,8 @@ function aggregatePartySeatsByYear(candidates, { termYears = TERM_YEARS } = {}) 
     const municipalityKey = normaliseString(candidate.source_key || candidate.source_file);
     if (!municipalityKey) continue;
 
-    const eventKey = `${municipalityKey}::${electionDate.getTime()}`;
+    const councilType = determineCouncilType(candidate);
+    const eventKey = `${municipalityKey}::${electionDate.getTime()}::${councilType}`;
     let event = eventsByMunicipality.get(eventKey);
     if (!event) {
       event = {
@@ -79,6 +225,7 @@ function aggregatePartySeatsByYear(candidates, { termYears = TERM_YEARS } = {}) 
         year,
         parties: new Map(),
         total: 0,
+        councilType,
       };
       eventsByMunicipality.set(eventKey, event);
     }
@@ -102,133 +249,68 @@ function aggregatePartySeatsByYear(candidates, { termYears = TERM_YEARS } = {}) 
   const yearsSet = new Set(events.map((event) => event.year));
   const years = Array.from(yearsSet).sort((a, b) => b - a);
 
-  const municipalityState = new Map();
-  const prefectureState = new Map();
-  const partyTotalsState = new Map();
+  const statesByType = {
+    [COUNCIL_TYPES.COMBINED]: createAggregationState(),
+    [COUNCIL_TYPES.PREFECTURE]: createAggregationState(),
+    [COUNCIL_TYPES.MUNICIPAL]: createAggregationState(),
+  };
 
-  const totalsByYearPrefecture = new Map();
-  const partyShareByYear = new Map();
-  const partyTotalsByYear = new Map();
+  const resultsByType = {
+    [COUNCIL_TYPES.COMBINED]: {
+      totalsByYearPrefecture: new Map(),
+      partyShareByYear: new Map(),
+      partyTotalsByYear: new Map(),
+    },
+    [COUNCIL_TYPES.PREFECTURE]: {
+      totalsByYearPrefecture: new Map(),
+      partyShareByYear: new Map(),
+      partyTotalsByYear: new Map(),
+    },
+    [COUNCIL_TYPES.MUNICIPAL]: {
+      totalsByYearPrefecture: new Map(),
+      partyShareByYear: new Map(),
+      partyTotalsByYear: new Map(),
+    },
+  };
 
   let eventIndex = 0;
 
-  const applyEvent = (event) => {
-    const previous = municipalityState.get(event.municipalityKey);
-    if (previous) {
-      const pref = prefectureState.get(previous.prefectureCode);
-      if (pref) {
-        pref.total -= previous.total;
-        previous.parties.forEach((seats, party) => {
-          const next = (pref.parties.get(party) ?? 0) - seats;
-          if (next <= 0) {
-            pref.parties.delete(party);
-          } else {
-            pref.parties.set(party, next);
-          }
-          const partyTotalNext = (partyTotalsState.get(party) ?? 0) - seats;
-          if (partyTotalNext <= 0) {
-            partyTotalsState.delete(party);
-          } else {
-            partyTotalsState.set(party, partyTotalNext);
-          }
-        });
-        if (pref.total <= 0) {
-          prefectureState.delete(previous.prefectureCode);
-        }
-      }
-    }
-
-    const nextEntry = {
-      prefectureCode: event.prefectureCode,
-      total: event.total,
-      parties: event.parties,
-      expiresAt:
-        new Date(event.date.getFullYear() + termYears, event.date.getMonth(), event.date.getDate()),
-    };
-    municipalityState.set(event.municipalityKey, nextEntry);
-
-    let pref = prefectureState.get(event.prefectureCode);
-    if (!pref) {
-      pref = { total: 0, parties: new Map() };
-      prefectureState.set(event.prefectureCode, pref);
-    }
-    pref.total += event.total;
-    event.parties.forEach((seats, party) => {
-      pref.parties.set(party, (pref.parties.get(party) ?? 0) + seats);
-      partyTotalsState.set(party, (partyTotalsState.get(party) ?? 0) + seats);
-    });
-  };
-
-  const removeExpiredEntries = (year) => {
-    const cutoff = new Date(year + 1, 0, 1).getTime();
-    for (const [municipalityKey, entry] of municipalityState.entries()) {
-      if (!entry.expiresAt || entry.expiresAt.getTime() >= cutoff) continue;
-      municipalityState.delete(municipalityKey);
-      const pref = prefectureState.get(entry.prefectureCode);
-      if (!pref) continue;
-      pref.total -= entry.total;
-      entry.parties.forEach((seats, party) => {
-        const next = (pref.parties.get(party) ?? 0) - seats;
-        if (next <= 0) {
-          pref.parties.delete(party);
-        } else {
-          pref.parties.set(party, next);
-        }
-        const totalNext = (partyTotalsState.get(party) ?? 0) - seats;
-        if (totalNext <= 0) {
-          partyTotalsState.delete(party);
-        } else {
-          partyTotalsState.set(party, totalNext);
-        }
-      });
-      if (pref.total <= 0) {
-        prefectureState.delete(entry.prefectureCode);
-      }
-    }
-  };
-
   for (const year of years) {
     while (eventIndex < events.length && events[eventIndex].year <= year) {
-      applyEvent(events[eventIndex]);
+      const event = events[eventIndex];
+      applyEventToState(statesByType[COUNCIL_TYPES.COMBINED], event, termYears);
+      const councilType = event.councilType;
+      if (councilType === COUNCIL_TYPES.PREFECTURE && statesByType[COUNCIL_TYPES.PREFECTURE]) {
+        applyEventToState(statesByType[COUNCIL_TYPES.PREFECTURE], event, termYears);
+      } else if (councilType === COUNCIL_TYPES.MUNICIPAL && statesByType[COUNCIL_TYPES.MUNICIPAL]) {
+        applyEventToState(statesByType[COUNCIL_TYPES.MUNICIPAL], event, termYears);
+      }
       eventIndex += 1;
     }
 
-    removeExpiredEntries(year);
-
-    const prefTotalsSnapshot = new Map();
-    const partyShareSnapshot = new Map();
-    prefectureState.forEach((prefState, prefCode) => {
-      if (prefState.total <= 0) return;
-      prefTotalsSnapshot.set(prefCode, prefState.total);
-      prefState.parties.forEach((seats, party) => {
-        let map = partyShareSnapshot.get(party);
-        if (!map) {
-          map = new Map();
-          partyShareSnapshot.set(party, map);
-        }
-        map.set(prefCode, {
-          seats,
-          total: prefState.total,
-          ratio: prefState.total > 0 ? seats / prefState.total : 0,
-        });
-      });
+    Object.values(COUNCIL_TYPES).forEach((type) => {
+      const state = statesByType[type];
+      if (!state) return;
+      removeExpiredEntriesFromState(state, year);
     });
 
-    const partyTotalsSnapshot = new Map();
-    partyTotalsState.forEach((seats, party) => {
-      partyTotalsSnapshot.set(party, seats);
+    Object.values(COUNCIL_TYPES).forEach((type) => {
+      const state = statesByType[type];
+      const resultContainer = resultsByType[type];
+      if (!state || !resultContainer) return;
+      const snapshot = snapshotState(state);
+      resultContainer.totalsByYearPrefecture.set(year, snapshot.totalsByPrefecture);
+      resultContainer.partyShareByYear.set(year, snapshot.partyShare);
+      resultContainer.partyTotalsByYear.set(year, snapshot.partyTotals);
     });
-
-    totalsByYearPrefecture.set(year, prefTotalsSnapshot);
-    partyShareByYear.set(year, partyShareSnapshot);
-    partyTotalsByYear.set(year, partyTotalsSnapshot);
   }
 
   return {
     years,
-    totalsByYearPrefecture,
-    partyShareByYear,
-    partyTotalsByYear,
+    totalsByYearPrefecture: resultsByType[COUNCIL_TYPES.COMBINED].totalsByYearPrefecture,
+    partyShareByYear: resultsByType[COUNCIL_TYPES.COMBINED].partyShareByYear,
+    partyTotalsByYear: resultsByType[COUNCIL_TYPES.COMBINED].partyTotalsByYear,
+    byCouncilType: resultsByType,
   };
 }
 
@@ -348,16 +430,25 @@ function formatPercent(value) {
   return `${display.toFixed(1)}%`;
 }
 
-function renderSummaryText({ year, party, coveredPrefectures, availablePrefectures, maxPrefName, maxRatio, seatSum }) {
-  return `${year}年、${party}は${coveredPrefectures} / ${availablePrefectures} 都道府県で議席を獲得し、最大は<strong>${maxPrefName}の${formatPercent(maxRatio)}（${seatSum.toLocaleString("ja-JP")}議席）</strong>です。`;
+function renderSummaryText({
+  year,
+  party,
+  scopeLabel,
+  coveredPrefectures,
+  availablePrefectures,
+  maxPrefName,
+  maxRatio,
+  seatSum,
+}) {
+  return `${year}年、${scopeLabel}で${party}は${coveredPrefectures} / ${availablePrefectures} 都道府県で議席を獲得し、最大は<strong>${maxPrefName}の${formatPercent(maxRatio)}（${seatSum.toLocaleString("ja-JP")}議席）</strong>です。`;
 }
 
-function updateLegend(container, selectedParty, breaks) {
+function updateLegend(container, selectedParty, scopeMeta, breaks) {
   if (!container) return;
   container.innerHTML = `
     <div class="choropleth-legend-header">
       <strong>${selectedParty}</strong>
-      <span>議席率</span>
+      <span>${scopeMeta.legendLabel}</span>
     </div>
     ${createLegendMarkup(breaks)}
   `;
@@ -392,10 +483,10 @@ function buildLegendBreaks(stops) {
   return labels;
 }
 
-function updateSummary(element, selectedParty, metrics, totalsByPrefecture, year) {
+function updateSummary(element, selectedParty, metrics, totalsByPrefecture, year, scopeMeta) {
   if (!element) return;
   if (!(metrics instanceof Map) || metrics.size === 0) {
-    element.textContent = `${year}年の${selectedParty}当選データを検出できませんでした。`;
+    element.textContent = `${year}年の${scopeMeta.label}における${selectedParty}当選データを検出できませんでした。`;
     return;
   }
   let maxPref = null;
@@ -415,6 +506,7 @@ function updateSummary(element, selectedParty, metrics, totalsByPrefecture, year
   element.innerHTML = renderSummaryText({
     year,
     party: selectedParty,
+    scopeLabel: scopeMeta.label,
     coveredPrefectures,
     availablePrefectures,
     maxPrefName,
@@ -445,6 +537,30 @@ function prepareYearSelect(select, years, defaultYear) {
   return fallback;
 }
 
+function prepareScopeSelect(select, options, defaultScope) {
+  if (!select) return defaultScope ?? COUNCIL_TYPES.COMBINED;
+  select.innerHTML = "";
+  const fallback =
+    options.find((option) => option.value === defaultScope && option.available)?.value ??
+    options.find((option) => option.available)?.value ??
+    options[0]?.value ??
+    defaultScope ??
+    COUNCIL_TYPES.COMBINED;
+  options.forEach((option) => {
+    const opt = document.createElement("option");
+    opt.value = option.value;
+    opt.textContent = option.label;
+    if (option.value === fallback) {
+      opt.selected = true;
+    }
+    select.appendChild(opt);
+  });
+  select.value = fallback;
+  const usableOptions = options.filter((option) => option.value);
+  select.disabled = usableOptions.length <= 1;
+  return fallback;
+}
+
 function preparePartySelect(select, parties, defaultParty) {
   if (!select) return defaultParty ?? null;
   select.innerHTML = "";
@@ -469,6 +585,7 @@ export async function initPartyMapDashboard({ candidates }) {
   if (!root) return null;
 
   const mapContainer = root.querySelector("#choropleth-map");
+  const scopeSelect = root.querySelector("#choropleth-scope");
   const partySelect = root.querySelector("#choropleth-party");
   const legendContainer = root.querySelector("#choropleth-legend");
   const summaryElement = root.querySelector("#choropleth-summary");
@@ -497,28 +614,70 @@ export async function initPartyMapDashboard({ candidates }) {
     showInfo("当選データから党派別の議席率を計算できませんでした。データセットをご確認ください。");
     partySelect?.setAttribute("disabled", "true");
     yearSelect?.setAttribute("disabled", "true");
+    scopeSelect?.setAttribute("disabled", "true");
     return null;
   }
+
+  const scopeOrder = [
+    COUNCIL_TYPES.COMBINED,
+    COUNCIL_TYPES.PREFECTURE,
+    COUNCIL_TYPES.MUNICIPAL,
+  ];
+  const scopeOptions = scopeOrder.map((value) => ({
+    value,
+    label: getScopeMeta(value).label,
+    available: hasSeatsForContainer(aggregation.byCouncilType?.[value]),
+  }));
+
+  const state = {
+    mode: prepareScopeSelect(scopeSelect, scopeOptions, COUNCIL_TYPES.COMBINED),
+    year: null,
+    party: "",
+  };
 
   const currentYear = new Date().getFullYear();
   const defaultYear =
     aggregation.years.find((year) => year === currentYear) ?? aggregation.years[0];
-  const state = {
-    year: prepareYearSelect(yearSelect, aggregation.years, defaultYear),
-    party: "",
+  state.year = prepareYearSelect(yearSelect, aggregation.years, defaultYear);
+
+  const getAggregationForMode = (mode) => {
+    const container = aggregation.byCouncilType?.[mode];
+    if (container && container.partyShareByYear instanceof Map) {
+      return container;
+    }
+    return (
+      aggregation.byCouncilType?.[COUNCIL_TYPES.COMBINED] ?? {
+        totalsByYearPrefecture: new Map(),
+        partyShareByYear: new Map(),
+        partyTotalsByYear: new Map(),
+      }
+    );
   };
 
-  const partiesForYear = getSortedParties(
-    aggregation.partyTotalsByYear.get(state.year) ?? new Map(),
-  );
+  const getPartiesFor = (mode, year) => {
+    const container = getAggregationForMode(mode);
+    const map = container?.partyTotalsByYear?.get?.(year);
+    return getSortedParties(map instanceof Map ? map : new Map());
+  };
+
+  const getMetricsFor = (mode, year, party) => {
+    const container = getAggregationForMode(mode);
+    const partyMap = container?.partyShareByYear?.get?.(year);
+    return partyMap instanceof Map ? partyMap.get(party) ?? new Map() : new Map();
+  };
+
+  const getTotalsFor = (mode, year) => {
+    const container = getAggregationForMode(mode);
+    const map = container?.totalsByYearPrefecture?.get?.(year);
+    return map instanceof Map ? map : new Map();
+  };
+
+  const partiesForYear = getPartiesFor(state.mode, state.year);
   state.party = preparePartySelect(partySelect, partiesForYear, partiesForYear[0]?.party ?? "");
 
-  const getMetricsFor = (year, party) =>
-    aggregation.partyShareByYear.get(year)?.get(party) ?? new Map();
-  const getTotalsFor = (year) => aggregation.totalsByYearPrefecture.get(year) ?? new Map();
-
-  const initialMetrics = getMetricsFor(state.year, state.party);
-  const initialTotals = getTotalsFor(state.year);
+  const scopeMeta = getScopeMeta(state.mode);
+  const initialMetrics = getMetricsFor(state.mode, state.year, state.party);
+  const initialTotals = getTotalsFor(state.mode, state.year);
   const initialStops = computeColorStops(initialMetrics);
   const initialLegendItems =
     initialMetrics instanceof Map && initialMetrics.size > 0
@@ -526,12 +685,25 @@ export async function initPartyMapDashboard({ candidates }) {
       : [];
 
   if (!(initialMetrics instanceof Map) || initialMetrics.size === 0) {
-    showInfo(`${state.year}年の${state.party || "該当党派"}当選データがありません。`);
+    showInfo(`${state.year}年の${scopeMeta.label}における${state.party || "該当党派"}当選データがありません。`);
   } else {
     hideInfo();
   }
-  updateLegend(legendContainer, state.party || "該当党派なし", initialLegendItems);
-  updateSummary(summaryElement, state.party || "該当党派なし", initialMetrics, initialTotals, state.year);
+  updateLegend(
+    legendContainer,
+    state.party || "該当党派なし",
+    scopeMeta,
+    initialLegendItems,
+  );
+  updateSummary(
+    summaryElement,
+    state.party || "該当党派なし",
+    initialMetrics,
+    initialTotals,
+    state.year,
+    scopeMeta,
+  );
+  mapContainer?.setAttribute("aria-label", `${scopeMeta.label}の${state.year}年 議席率地図`);
 
   let geoJson;
   try {
@@ -606,9 +778,10 @@ export async function initPartyMapDashboard({ candidates }) {
 
   let hoveredId = null;
 
-  const updateMapForSelection = (year, party) => {
-    const metrics = getMetricsFor(year, party);
-    const totals = getTotalsFor(year);
+  const updateMapForSelection = (year, party, mode) => {
+    const scope = getScopeMeta(mode);
+    const metrics = getMetricsFor(mode, year, party);
+    const totals = getTotalsFor(mode, year);
     const data = buildFeatureCollection(
       baseFeatures,
       metrics,
@@ -625,14 +798,15 @@ export async function initPartyMapDashboard({ candidates }) {
     const legendItems =
       metrics instanceof Map && metrics.size > 0 ? buildLegendBreaks(colorStops) : [];
     const displayParty = party || "該当党派なし";
-    updateLegend(legendContainer, displayParty, legendItems);
-    updateSummary(summaryElement, displayParty, metrics, totals, year);
+    mapContainer?.setAttribute("aria-label", `${scope.label}の${year}年 議席率地図`);
+    updateLegend(legendContainer, displayParty, scope, legendItems);
+    updateSummary(summaryElement, displayParty, metrics, totals, year, scope);
     if (hoveredId !== null) {
       map.setFeatureState({ source: "prefectures", id: hoveredId }, { hover: false });
       hoveredId = null;
     }
     if (!(metrics instanceof Map) || metrics.size === 0) {
-      showInfo(`${year}年の${displayParty}当選データがありません。`);
+      showInfo(`${year}年の${scope.label}における${displayParty}当選データがありません。`);
     } else {
       hideInfo();
     }
@@ -662,7 +836,7 @@ export async function initPartyMapDashboard({ candidates }) {
       },
     });
 
-    updateMapForSelection(state.year, state.party);
+    updateMapForSelection(state.year, state.party, state.mode);
 
     map.addLayer({
       id: "prefecture-outline",
@@ -727,18 +901,25 @@ export async function initPartyMapDashboard({ candidates }) {
 
   partySelect?.addEventListener("change", (event) => {
     state.party = event.target.value;
-    updateMapForSelection(state.year, state.party);
+    updateMapForSelection(state.year, state.party, state.mode);
   });
 
   yearSelect?.addEventListener("change", (event) => {
     const yearValue = Number(event.target.value);
     if (!Number.isFinite(yearValue)) return;
     state.year = yearValue;
-    const yearParties = getSortedParties(
-      aggregation.partyTotalsByYear.get(state.year) ?? new Map(),
-    );
+    const yearParties = getPartiesFor(state.mode, state.year);
     state.party = preparePartySelect(partySelect, yearParties, state.party);
-    updateMapForSelection(state.year, state.party);
+    updateMapForSelection(state.year, state.party, state.mode);
+  });
+
+  scopeSelect?.addEventListener("change", (event) => {
+    const modeValue = event.target.value;
+    if (!modeValue) return;
+    state.mode = modeValue;
+    const scopeParties = getPartiesFor(state.mode, state.year);
+    state.party = preparePartySelect(partySelect, scopeParties, state.party);
+    updateMapForSelection(state.year, state.party, state.mode);
   });
 
   return {
