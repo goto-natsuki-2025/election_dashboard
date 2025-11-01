@@ -1233,6 +1233,13 @@ export async function initPartyMapDashboard({ candidates }) {
     if (map.getLayer("region-fill")) {
       map.setPaintProperty("region-fill", "fill-color", buildColorExpression(colorStops));
     }
+    if (map.getLayer("region-outline")) {
+      map.setLayoutProperty(
+        "region-outline",
+        "visibility",
+        mode === COUNCIL_TYPES.MUNICIPAL ? "none" : "visible",
+      );
+    }
     const legendItems =
       metrics instanceof Map && metrics.size > 0 ? buildLegendBreaks(colorStops) : [];
     const displayParty = party || "該当党派なし";
@@ -1301,6 +1308,9 @@ export async function initPartyMapDashboard({ candidates }) {
         ],
       },
     });
+    if (state.mode === COUNCIL_TYPES.MUNICIPAL) {
+      map.setLayoutProperty("region-outline", "visibility", "none");
+    }
 
     map.on("mousemove", "region-fill", (event) => {
       const feature = event.features?.[0];
