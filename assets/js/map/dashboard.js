@@ -1240,6 +1240,13 @@ export async function initPartyMapDashboard({ candidates }) {
         mode === COUNCIL_TYPES.MUNICIPAL ? "none" : "visible",
       );
     }
+    if (map.getLayer("prefecture-outline")) {
+      map.setLayoutProperty(
+        "prefecture-outline",
+        "visibility",
+        mode === COUNCIL_TYPES.MUNICIPAL ? "visible" : "none",
+      );
+    }
     const legendItems =
       metrics instanceof Map && metrics.size > 0 ? buildLegendBreaks(colorStops) : [];
     const displayParty = party || "該当党派なし";
@@ -1308,8 +1315,36 @@ export async function initPartyMapDashboard({ candidates }) {
         ],
       },
     });
+    const prefectureGeometry = geometryByMode[COUNCIL_TYPES.PREFECTURE]?.features ?? [];
+    if (prefectureGeometry.length > 0) {
+      map.addSource("prefecture-boundaries", {
+        type: "geojson",
+        data: {
+          type: "FeatureCollection",
+          features: prefectureGeometry,
+        },
+      });
+      map.addLayer(
+        {
+          id: "prefecture-outline",
+          type: "line",
+          source: "prefecture-boundaries",
+          layout: {
+            visibility: "none",
+          },
+          paint: {
+            "line-color": "#94a3da",
+            "line-width": 1.6,
+          },
+        },
+        "region-outline",
+      );
+    }
     if (state.mode === COUNCIL_TYPES.MUNICIPAL) {
       map.setLayoutProperty("region-outline", "visibility", "none");
+      if (map.getLayer("prefecture-outline")) {
+        map.setLayoutProperty("prefecture-outline", "visibility", "visible");
+      }
     }
 
     map.on("mousemove", "region-fill", (event) => {
