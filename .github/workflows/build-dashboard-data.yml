@@ -1,0 +1,43 @@
+name: Build Dashboard Data
+
+on:
+  push:
+    paths:
+      - data/candidate_details.csv.gz
+      - data/SeatsAndCompensation.csv
+      - data/election_summary.csv
+      - build_dashboard_data.py
+      - generate_compensation_data.py
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pandas
+
+      - name: Build precomputed dashboard data
+        run: python build_dashboard_data.py
+
+      - name: Commit generated artifacts
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: update generated dashboard data"
+          file_pattern: data/*.json.gz

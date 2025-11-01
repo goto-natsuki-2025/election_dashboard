@@ -2,11 +2,8 @@ import {
   buildSummaryIndex,
   loadCandidateDetails,
   loadElectionSummary,
+  loadTopDashboardData,
 } from "./data-loaders.js";
-import {
-  buildElectionEvents,
-  buildPartyTimeline,
-} from "./aggregations.js";
 import {
   renderPartyHighlights,
   renderPartyTrendChart,
@@ -34,7 +31,14 @@ function setupViewSwitching(activations = {}) {
 
     const callback = activations[targetId];
     if (typeof callback === "function") {
-      callback();
+      try {
+        const result = callback();
+        if (result && typeof result.then === "function") {
+          result.catch((error) => console.error(error));
+        }
+      } catch (error) {
+        console.error(error);
+      }
     }
   };
 
@@ -56,51 +60,92 @@ function setupViewSwitching(activations = {}) {
 }
 
 async function main() {
-  const elections = await loadElectionSummary();
-  const summaryIndex = buildSummaryIndex(elections);
-  const candidates = await loadCandidateDetails(summaryIndex);
-
-  const { events, municipalityCount } = buildElectionEvents(candidates);
-  if (events.length === 0) {
-    throw new Error("No election data matched the aggregation criteria");
+  const topDashboard = await loadTopDashboardData();
+  if (
+    !Array.isArray(topDashboard.timeline?.dateLabels) ||
+    topDashboard.timeline.dateLabels.length === 0
+  ) {
+    throw new Error("Top dashboard data did not contain any timeline entries");
   }
+  renderSummary(topDashboard.summary);
+  renderPartyHighlights(topDashboard.timeline, 6);
+  renderPartyTrendChart("party-trend-chart", topDashboard.timeline);
 
-  const timeline = buildPartyTimeline(events, { topN: 8 });
-  if (timeline.series.length === 0 || timeline.dateLabels.length === 0) {
-    throw new Error("Insufficient data to build the party timeline");
-  }
+  let electionsPromise;
+  const ensureElections = () => {
+    if (!electionsPromise) {
+      electionsPromise = loadElectionSummary();
+    }
+    return electionsPromise;
+  };
 
-  renderSummary({
-    municipalityCount,
-    totalSeats: timeline.totalSeats,
-    partyCount: timeline.parties.length,
-    minDate: timeline.minDate,
-    maxDate: timeline.maxDate,
-  });
+  let candidateBundlePromise;
+  const ensureCandidateBundle = () => {
+    if (!candidateBundlePromise) {
+      candidateBundlePromise = ensureElections().then((elections) => {
+        const summaryIndex = buildSummaryIndex(elections);
+        return loadCandidateDetails(summaryIndex).then((candidates) => ({
+          elections,
+          candidates,
+        }));
+      });
+    }
+    return candidateBundlePromise;
+  };
 
-  renderPartyHighlights(timeline, 6);
-  renderPartyTrendChart("party-trend-chart", timeline);
+  let compensationInitPromise;
+  const ensureCompensationReady = () => {
+    if (!compensationInitPromise) {
+      compensationInitPromise = initCompensationDashboard();
+    }
+    return compensationInitPromise;
+  };
 
-  const compensationDashboard = await initCompensationDashboard();
-  const partyMapDashboard = await initPartyMapDashboard({ elections, candidates });
-  const searchDashboard = initElectionSearchDashboard({ elections, candidates });
+  let partyMapInitPromise;
+  const ensurePartyMapReady = () => {
+    if (!partyMapInitPromise) {
+      partyMapInitPromise = ensureCandidateBundle().then(({ candidates }) =>
+        initPartyMapDashboard({ candidates }),
+      );
+    }
+    return partyMapInitPromise;
+  };
+
+  let searchInitPromise;
+  const ensureSearchReady = () => {
+    if (!searchInitPromise) {
+      searchInitPromise = ensureCandidateBundle().then(({ elections, candidates }) =>
+        initElectionSearchDashboard({ elections, candidates }),
+      );
+    }
+    return searchInitPromise;
+  };
 
   setupViewSwitching({
-    "compensation-dashboard": () => {
-      requestAnimationFrame(() => {
-        compensationDashboard?.resize();
-      });
-    },
-    "choropleth-dashboard": () => {
-      requestAnimationFrame(() => {
-        partyMapDashboard?.resize();
-      });
-    },
-    "search-dashboard": () => {
-      requestAnimationFrame(() => {
-        searchDashboard?.resize();
-      });
-    },
+    "compensation-dashboard": () =>
+      ensureCompensationReady()
+        .then((dashboard) => {
+          requestAnimationFrame(() => {
+            dashboard?.resize?.();
+          });
+        })
+        .catch((error) => console.error(error)),
+    "choropleth-dashboard": () =>
+      ensurePartyMapReady()
+        .then((dashboard) => {
+          requestAnimationFrame(() => {
+            dashboard?.resize?.();
+          });
+        })
+        .catch((error) => console.error(error)),
+    "search-dashboard": () =>
+      ensureSearchReady()
+        .then((dashboard) => {
+          requestAnimationFrame(() => {
+            dashboard?.resize?.();
+          });
+        })
+        .catch((error) => console.error(error)),
   });
 }
 

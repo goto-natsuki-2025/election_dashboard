@@ -1,5 +1,7 @@
 import { WINNING_KEYWORDS } from "./constants.js";
 
+const UTF8_DECODER = typeof TextDecoder === "function" ? new TextDecoder("utf-8") : null;
+
 export function normaliseString(value) {
   return (value ?? "").toString().trim();
 }
@@ -42,4 +44,41 @@ export function formatYmd(date) {
   const m = String(date.getMonth() + 1).padStart(2, "0");
   const d = String(date.getDate()).padStart(2, "0");
   return `${y}${m}${d}`;
+}
+
+async function decodeGzipStream(stream) {
+  const buffer = await new Response(stream).arrayBuffer();
+  return new Uint8Array(buffer);
+}
+
+async function decompressFromArrayBuffer(buffer) {
+  if (typeof DecompressionStream === "function") {
+    const stream = new Blob([buffer]).stream().pipeThrough(new DecompressionStream("gzip"));
+    return decodeGzipStream(stream);
+  }
+  const module = await import("https://cdn.jsdelivr.net/npm/fflate@0.8.2/esm/browser.js");
+  return module.gunzipSync(new Uint8Array(buffer));
+}
+
+export async function fetchGzipText(url, options = {}) {
+  const init = { cache: "no-cache", ...options };
+  const response = await fetch(url, init);
+  if (!response.ok) {
+    throw new Error(`${url} の取得に失敗しました (${response.status})`);
+  }
+  if (typeof DecompressionStream === "function" && response.body) {
+    const stream = response.body.pipeThrough(new DecompressionStream("gzip"));
+    const bytes = await decodeGzipStream(stream);
+    const decoder = UTF8_DECODER ?? new TextDecoder("utf-8");
+    return decoder.decode(bytes);
+  }
+  const buffer = await response.arrayBuffer();
+  const bytes = await decompressFromArrayBuffer(buffer);
+  const decoder = UTF8_DECODER ?? new TextDecoder("utf-8");
+  return decoder.decode(bytes);
+}
+
+export async function fetchGzipJson(url, options = {}) {
+  const text = await fetchGzipText(url, options);
+  return JSON.parse(text);
 }
