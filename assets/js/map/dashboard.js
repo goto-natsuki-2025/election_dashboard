@@ -596,8 +596,10 @@ function buildFeatureCollection(baseFeatures, partyMetrics, totalsByRegion) {
         regionId && typeof totalsByRegion?.get === "function"
           ? totalsByRegion.get(regionId)
           : null;
-      const totalSeats =
-        Number.isFinite(totalValue) && totalValue !== null ? Number(totalValue) : 0;
+      const hasTotal =
+        Number.isFinite(totalValue) && totalValue !== null && Number(totalValue) >= 0;
+      const totalSeats = hasTotal ? Number(totalValue) : 0;
+      const dataError = !hasTotal || totalSeats <= 0;
       return {
         ...feature,
         properties: {
@@ -605,6 +607,7 @@ function buildFeatureCollection(baseFeatures, partyMetrics, totalsByRegion) {
           party_ratio: metrics?.ratio ?? 0,
           party_seats: metrics?.seats ?? 0,
           total_seats: totalSeats,
+          data_error: dataError,
         },
       };
     }),
@@ -641,11 +644,16 @@ function computeColorStops(metrics) {
 }
 
 function buildColorExpression(stops) {
-  const expression = ["interpolate", ["linear"], ["get", "party_ratio"]];
+  const baseExpression = ["interpolate", ["linear"], ["get", "party_ratio"]];
   for (const stop of stops) {
-    expression.push(stop.value, stop.color);
+    baseExpression.push(stop.value, stop.color);
   }
-  return expression;
+  return [
+    "case",
+    ["==", ["get", "data_error"], true],
+    "rgba(248, 113, 113, 0.65)",
+    baseExpression,
+  ];
 }
 function createLegendMarkup(breaks) {
   return breaks
@@ -1095,11 +1103,21 @@ export async function initPartyMapDashboard({ candidates }) {
   const geometryForMode = getGeometryForMode(state.mode);
   const initialMetrics = getMetricsFor(state.mode, state.year, state.party);
   const initialTotals = getTotalsFor(state.mode, state.year);
+  const initialData = buildFeatureCollection(geometryForMode.features, initialMetrics, initialTotals);
+  const initialHasError = Array.isArray(initialData?.features)
+    ? initialData.features.some((feature) => feature?.properties?.data_error)
+    : false;
   const initialStops = computeColorStops(initialMetrics);
   const initialLegendItems =
     initialMetrics instanceof Map && initialMetrics.size > 0
       ? buildLegendBreaks(initialStops)
       : [];
+  if (initialHasError) {
+    initialLegendItems.unshift({
+      color: "rgba(248, 113, 113, 0.65)",
+      label: "DBにデータなし",
+    });
+  }
 
   if (!(initialMetrics instanceof Map) || initialMetrics.size === 0) {
     showInfo(`${state.year}年の${scopeMeta.label}における${state.party || "該当党派"}当選データがありません。`);
@@ -1178,6 +1196,9 @@ export async function initPartyMapDashboard({ candidates }) {
     const metrics = getMetricsFor(mode, year, party);
     const totals = getTotalsFor(mode, year);
     const data = buildFeatureCollection(geometry.features, metrics, totals);
+    const hasDataError = Array.isArray(data?.features)
+      ? data.features.some((feature) => feature?.properties?.data_error)
+      : false;
     const source = map.getSource("regions");
     if (source) {
       source.setData(data);
@@ -1189,6 +1210,12 @@ export async function initPartyMapDashboard({ candidates }) {
     const legendItems =
       metrics instanceof Map && metrics.size > 0 ? buildLegendBreaks(colorStops) : [];
     const displayParty = party || "該当党派なし";
+    if (hasDataError) {
+      legendItems.unshift({
+        color: "rgba(248, 113, 113, 0.65)",
+        label: "DBにデータなし",
+      });
+    }
     mapContainer?.setAttribute("aria-label", `${scope.label}の${year}年 議席率地図`);
     updateLegend(legendContainer, displayParty, scope, legendItems);
     updateSummary(summaryElement, displayParty, metrics, totals, year, scope, geometry.nameResolver);
@@ -1206,7 +1233,7 @@ export async function initPartyMapDashboard({ candidates }) {
   map.on("load", () => {
     map.addSource("regions", {
       type: "geojson",
-      data: buildFeatureCollection(initialGeometry.features, initialMetrics, initialTotals),
+      data: initialData,
       generateId: true,
     });
 
@@ -1265,12 +1292,14 @@ export async function initPartyMapDashboard({ candidates }) {
       const ratio = Number(feature.properties?.party_ratio ?? 0);
       const seats = Number(feature.properties?.party_seats ?? 0);
       const total = Number(feature.properties?.total_seats ?? 0);
+      const hasError = Boolean(feature.properties?.data_error);
+      const detailText = hasError
+        ? "DBにデータなし"
+        : `${formatPercent(ratio)} (${seats.toLocaleString("ja-JP")} / ${total.toLocaleString("ja-JP")})`;
       tooltip.hidden = false;
       tooltip.innerHTML = `
         <strong>${regionName}</strong>
-        <span>${formatPercent(ratio)} (${seats.toLocaleString(
-        "ja-JP",
-      )} / ${total.toLocaleString("ja-JP")})</span>
+        <span>${detailText}</span>
       `;
       tooltip.style.left = `${event.point.x + 16}px`;
       tooltip.style.top = `${event.point.y + 16}px`;
