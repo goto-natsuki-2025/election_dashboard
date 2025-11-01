@@ -2,13 +2,20 @@ import gzip
 import json
 import math
 import re
+from collections import defaultdict
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
 import pandas as pd
 
-from generate_compensation_data import build_party_compensation, to_iso_date
+from generate_compensation_data import (
+    TERM_YEARS,
+    WINNING_KEYWORDS,
+    add_years_safe,
+    build_party_compensation,
+    to_iso_date,
+)
 
 ROOT = Path(__file__).resolve().parent
 
@@ -20,6 +27,21 @@ CANDIDATE_DETAILS_PATH = DATA_DIR / "candidate_details.csv.gz"
 CANDIDATE_OUTPUT_PATH = DATA_DIR / "candidate_details.json.gz"
 ELECTION_OUTPUT_PATH = DATA_DIR / "election_summary.json.gz"
 COMPENSATION_OUTPUT_PATH = DATA_DIR / "compensation.json.gz"
+TOP_DASHBOARD_OUTPUT_PATH = DATA_DIR / "top_dashboard.json.gz"
+
+PARTY_FOUNDATION_DATES = {
+    "自由民主党": datetime(1955, 11, 15),
+    "公明党": datetime(1964, 11, 17),
+    "日本共産党": datetime(1922, 7, 15),
+    "民主党": datetime(1998, 4, 27),
+    "民進党": datetime(2016, 3, 27),
+    "立憲民主党": datetime(2017, 10, 3),
+    "国民民主党": datetime(2018, 5, 7),
+    "社会民主党": datetime(1996, 1, 19),
+    "日本維新の会": datetime(2012, 9, 12),
+    "大阪維新の会": datetime(2010, 4, 19),
+    "希望の党": datetime(2017, 9, 25),
+}
 
 SOURCE_PATTERN = re.compile(r"^(.*)_(\d{8})$")
 
@@ -166,6 +188,285 @@ def load_candidate_details(summary_index: Dict[str, List[Dict[str, Any]]]) -> Li
     return records
 
 
+def is_winning_outcome(value: Any) -> bool:
+    text = normalise_string(value)
+    if not text:
+        return False
+    return any(keyword in text for keyword in WINNING_KEYWORDS)
+
+
+def parse_iso_datetime(value: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def build_election_events(candidates: List[Dict[str, Any]]):
+    events_map: Dict[str, Dict[str, Any]] = {}
+    municipality_set = set()
+
+    for candidate in candidates:
+        if not is_winning_outcome(candidate.get("outcome")):
+            continue
+        election_date = parse_iso_datetime(candidate.get("election_date"))
+        if not election_date:
+            continue
+
+        municipality_key = normalise_string(candidate.get("source_key"))
+        if not municipality_key:
+            continue
+
+        municipality_set.add(municipality_key)
+
+        date_code = election_date.strftime("%Y%m%d")
+        event_key = f"{municipality_key}|{date_code}"
+        event = events_map.get(event_key)
+        if event is None:
+            event = {
+                "key": municipality_key,
+                "date": election_date,
+                "date_code": date_code,
+                "winners": defaultdict(int),
+            }
+            events_map[event_key] = event
+
+        party = ensure_party_name(candidate.get("party"))
+        if party:
+            event["winners"][party] += 1
+
+    events = []
+    for event in events_map.values():
+        if event["winners"]:
+            events.append(
+                {
+                    "key": event["key"],
+                    "date": event["date"],
+                    "date_code": event["date_code"],
+                    "winners": dict(event["winners"]),
+                }
+            )
+
+    events.sort(key=lambda item: item["date"])
+    return events, len(municipality_set)
+
+
+def build_party_timeline(events: List[Dict[str, Any]], top_n: int = 8, term_years: int = TERM_YEARS):
+    if not events:
+        return {
+            "date_labels": [],
+            "series": [],
+            "parties": [],
+            "totals": {},
+            "sparkline_values": {},
+            "total_seats": 0,
+            "min_date": None,
+            "max_date": None,
+        }
+
+    foundation_dates: Dict[str, datetime] = dict(PARTY_FOUNDATION_DATES)
+
+    events_by_key: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    for event in events:
+        events_by_key[event["key"]].append(event)
+
+    timeline_events = []
+    for key, entries in events_by_key.items():
+        entries.sort(key=lambda item: item["date"])
+        for index, event in enumerate(entries):
+            term_id = f"{event['key']}-{int(event['date'].timestamp())}"
+            timeline_events.append({
+                "type": "election",
+                "date": event["date"],
+                "date_code": event["date_code"],
+                "key": event["key"],
+                "winners": event["winners"],
+                "term_id": term_id,
+            })
+
+            next_event = entries[index + 1] if index + 1 < len(entries) else None
+            if next_event:
+                expiration_dt = max(next_event["date"], event["date"])
+            else:
+                expiration_date = add_years_safe(event["date"].date(), term_years)
+                expiration_dt = datetime(expiration_date.year, expiration_date.month, expiration_date.day)
+
+            timeline_events.append({
+                "type": "expiration",
+                "date": expiration_dt,
+                "date_code": expiration_dt.strftime("%Y%m%d"),
+                "key": event["key"],
+                "winners": event["winners"],
+                "term_id": term_id,
+            })
+
+    timeline_events.sort(key=lambda item: (item["date"], 0 if item["type"] == "expiration" else 1))
+
+    change_map: Dict[str, Dict[str, Any]] = {}
+    active_terms: Dict[str, Dict[str, Any]] = {}
+
+    def apply_change(date_code: str, dt: datetime, party: str, delta: float):
+        foundation = foundation_dates.get(party)
+        if foundation and dt < foundation:
+            return
+        bucket = change_map.get(date_code)
+        if bucket is None:
+            bucket = {"date": dt, "deltas": defaultdict(float)}
+            change_map[date_code] = bucket
+        else:
+            if dt < bucket["date"]:
+                bucket["date"] = dt
+        next_value = bucket["deltas"][party] + delta
+        if abs(next_value) < 1e-9:
+            del bucket["deltas"][party]
+        else:
+            bucket["deltas"][party] = next_value
+
+    for event in timeline_events:
+        if event["type"] == "expiration":
+            current = active_terms.get(event["key"])
+            if not current or current["term_id"] != event["term_id"]:
+                continue
+            for party, count in current["seats"].items():
+                apply_change(event["date_code"], event["date"], party, -count)
+            active_terms.pop(event["key"], None)
+            continue
+
+        current = active_terms.get(event["key"])
+        if current:
+            for party, count in current["seats"].items():
+                apply_change(event["date_code"], event["date"], party, -count)
+
+        seats_snapshot = {}
+        for party, count in event["winners"].items():
+            foundation = foundation_dates.get(party)
+            if foundation and event["date"] < foundation:
+                continue
+            apply_change(event["date_code"], event["date"], party, count)
+            seats_snapshot[party] = count
+
+        if seats_snapshot:
+            active_terms[event["key"]] = {"term_id": event["term_id"], "seats": seats_snapshot}
+        else:
+            active_terms.pop(event["key"], None)
+
+    sorted_changes = [bucket for bucket in change_map.values() if bucket["deltas"]]
+    sorted_changes.sort(key=lambda bucket: bucket["date"])
+
+    if not sorted_changes:
+        return {
+            "date_labels": [],
+            "series": [],
+            "parties": [],
+            "totals": {},
+            "sparkline_values": {},
+            "total_seats": 0,
+            "min_date": None,
+            "max_date": None,
+        }
+
+    now = datetime.now()
+    effective_changes = [bucket for bucket in sorted_changes if bucket["date"] <= now]
+    if not effective_changes:
+        effective_changes = sorted_changes
+
+    parties_set = []
+    seen_parties = set()
+    for bucket in effective_changes:
+        for party in bucket["deltas"].keys():
+            if party not in seen_parties:
+                seen_parties.add(party)
+                parties_set.append(party)
+
+    running_totals: Dict[str, int] = {party: 0 for party in parties_set}
+    sparkline_values: Dict[str, List[Optional[int]]] = {party: [] for party in parties_set}
+
+    label_dates: List[datetime] = []
+    date_labels: List[str] = []
+
+    for bucket in effective_changes:
+        for party, delta in bucket["deltas"].items():
+            const_value = running_totals.get(party, 0) + delta
+            running_totals[party] = max(int(round(const_value)), 0)
+        for party in parties_set:
+            sparkline_values[party].append(running_totals.get(party, 0))
+        label_dates.append(bucket["date"])
+        date_labels.append(bucket["date"].strftime("%Y-%m-%d"))
+
+    for party, values in list(sparkline_values.items()):
+        foundation = foundation_dates.get(party)
+        if not foundation:
+            continue
+        for index, dt in enumerate(label_dates):
+            if dt < foundation:
+                values[index] = None
+            else:
+                break
+
+    totals: Dict[str, int] = {}
+    filtered_sparkline: Dict[str, List[Optional[int]]] = {}
+    for party, values in sparkline_values.items():
+        last_value = 0
+        for value in reversed(values):
+            if value is not None:
+                last_value = value
+                break
+        if last_value > 0:
+            totals[party] = int(round(last_value))
+            filtered_sparkline[party] = [None if value is None else int(round(value)) for value in values]
+
+    parties_ordered = [party for party, _ in sorted(totals.items(), key=lambda item: item[1], reverse=True)]
+
+    limited_parties = parties_ordered[:top_n]
+    series = [
+        {
+            "name": party,
+            "type": "line",
+            "smooth": True,
+            "showSymbol": False,
+            "emphasis": {"focus": "series"},
+            "data": filtered_sparkline.get(party, []),
+        }
+        for party in limited_parties
+    ]
+
+    total_seats = int(sum(totals.values()))
+    min_date = effective_changes[0]["date"].isoformat()
+    max_date = effective_changes[-1]["date"].isoformat()
+
+    return {
+        "date_labels": date_labels,
+        "series": series,
+        "parties": parties_ordered,
+        "totals": totals,
+        "sparkline_values": filtered_sparkline,
+        "total_seats": total_seats,
+        "min_date": min_date,
+        "max_date": max_date,
+    }
+
+
+def build_top_dashboard_payload(candidates: List[Dict[str, Any]]):
+    events, municipality_count = build_election_events(candidates)
+    timeline = build_party_timeline(events)
+
+    summary = {
+        "municipality_count": municipality_count,
+        "total_seats": timeline["total_seats"],
+        "party_count": len(timeline["parties"]),
+        "min_date": timeline["min_date"],
+        "max_date": timeline["max_date"],
+    }
+
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "summary": summary,
+        "timeline": timeline,
+    }
+
+
 def write_json(path: Path, payload: Dict[str, Any]) -> None:
     data = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     if path.suffix == ".gz":
@@ -188,6 +489,7 @@ def main() -> None:
     summary_index = build_summary_index(elections)
     candidates = load_candidate_details(summary_index)
     compensation = build_party_compensation()
+    top_dashboard = build_top_dashboard_payload(candidates)
 
     # clean up compensation date fields to ISO strings for safety
     for row in compensation.get("rows", []):
@@ -215,11 +517,13 @@ def main() -> None:
     write_json(ELECTION_OUTPUT_PATH, build_payload(elections))
     write_json(CANDIDATE_OUTPUT_PATH, build_payload(candidates))
     write_json(COMPENSATION_OUTPUT_PATH, compensation)
+    write_json(TOP_DASHBOARD_OUTPUT_PATH, top_dashboard)
     print(
         "Generated dashboard data:",
         ELECTION_OUTPUT_PATH.name,
         CANDIDATE_OUTPUT_PATH.name,
         COMPENSATION_OUTPUT_PATH.name,
+        TOP_DASHBOARD_OUTPUT_PATH.name,
     )
 
 

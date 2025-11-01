@@ -11,6 +11,65 @@ const toNumber = (value) => {
   return Number.isFinite(num) ? num : null;
 };
 
+export async function loadTopDashboardData() {
+  const payload = await fetchGzipJson(DATA_PATH.top);
+  const summary = payload?.summary ?? {};
+  const timelinePayload = payload?.timeline ?? {};
+
+  const normaliseValues = (values) =>
+    Array.isArray(values)
+      ? values.map((value) => {
+          if (value === null || value === undefined) return null;
+          const num = Number(value);
+          return Number.isFinite(num) ? num : null;
+        })
+      : [];
+
+  const totals = new Map(
+    Object.entries(timelinePayload.totals ?? {}).map(([party, value]) => {
+      const num = Number(value);
+      return [party, Number.isFinite(num) ? num : 0];
+    }),
+  );
+  const sparklineValues = new Map(
+    Object.entries(timelinePayload.sparkline_values ?? {}).map(([party, values]) => [
+      party,
+      normaliseValues(values),
+    ]),
+  );
+
+  const series = Array.isArray(timelinePayload.series)
+    ? timelinePayload.series.map((item) => ({
+        name: item.name,
+        type: item.type ?? "line",
+        smooth: item.smooth ?? true,
+        showSymbol: item.showSymbol ?? false,
+        emphasis: item.emphasis ?? { focus: "series" },
+        data: normaliseValues(item.data),
+      }))
+    : [];
+
+  return {
+    summary: {
+      municipalityCount: Number(summary.municipality_count) || 0,
+      totalSeats: Number(summary.total_seats) || 0,
+      partyCount: Number(summary.party_count) || 0,
+      minDate: summary.min_date ? new Date(summary.min_date) : null,
+      maxDate: summary.max_date ? new Date(summary.max_date) : null,
+    },
+    timeline: {
+      dateLabels: Array.isArray(timelinePayload.date_labels) ? timelinePayload.date_labels : [],
+      series,
+      parties: Array.isArray(timelinePayload.parties) ? timelinePayload.parties : [],
+      totals,
+      sparklineValues,
+      totalSeats: Number(timelinePayload.total_seats) || 0,
+      minDate: timelinePayload.min_date ? new Date(timelinePayload.min_date) : null,
+      maxDate: timelinePayload.max_date ? new Date(timelinePayload.max_date) : null,
+    },
+  };
+}
+
 export async function loadElectionSummary() {
   const payload = await fetchGzipJson(DATA_PATH.elections);
   const records = Array.isArray(payload?.records) ? payload.records : [];
