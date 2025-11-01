@@ -1,6 +1,8 @@
 ﻿export const DATA_PATH = {
-  elections: "data/election_summary.csv",
-  candidates: "data/candidate_details.csv.gz",
+  top: "data/top_dashboard.json.gz",
+  elections: "data/election_summary.json.gz",
+  candidates: "data/candidate_details.json.gz",
+  compensation: "data/compensation.json.gz",
 };
 
 export const WINNING_KEYWORDS = [
