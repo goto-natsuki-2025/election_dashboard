@@ -1333,8 +1333,8 @@ export async function initPartyMapDashboard({ candidates }) {
             visibility: "none",
           },
           paint: {
-            "line-color": "#94a3da",
-            "line-width": 1.6,
+            "line-color": "rgba(30, 41, 59, 0.55)",
+            "line-width": 1.4,
           },
         },
         "region-outline",
