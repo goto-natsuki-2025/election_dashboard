@@ -276,7 +276,7 @@ def build_party_timeline(events: List[Dict[str, Any]], top_n: int = 8, term_year
     for key, entries in events_by_key.items():
         entries.sort(key=lambda item: item["date"])
         for index, event in enumerate(entries):
-            term_id = f"{event['key']}-{int(event['date'].timestamp())}"
+            term_id = f"{event['key']}-{event['date'].strftime('%Y-%m-%d')}"
             timeline_events.append({
                 "type": "election",
                 "date": event["date"],
