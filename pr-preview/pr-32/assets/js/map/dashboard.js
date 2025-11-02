@@ -1,7 +1,6 @@
 import { PREFECTURES, PREFECTURE_NAME_BY_CODE, TERM_YEARS } from "../constants.js";
 import { fetchGzipJson, isWinningOutcome, normaliseString } from "../utils.js";
-
-const PREFECTURE_GEOJSON_PATH = "assets/data/japan.geojson";
+const PREFECTURE_TOPO_PATH = "assets/data/japan.topojson.gz";
 const MUNICIPAL_TOPO_PATH = "assets/data/municipal.topojson.gz";
 const COLOR_PALETTE = [
   "#f8fafc",
@@ -291,6 +290,24 @@ function ensureTopojsonClient() {
   return topojsonClientPromise;
 }
 
+function resolveTopoGeometryCollection(rawTopoJson, preferredName = null) {
+  if (!rawTopoJson?.objects) {
+    return { name: null, object: null };
+  }
+  if (preferredName && rawTopoJson.objects[preferredName]) {
+    return { name: preferredName, object: rawTopoJson.objects[preferredName] };
+  }
+  const objectKeys = Object.keys(rawTopoJson.objects);
+  const objectName =
+    objectKeys.find((key) => rawTopoJson.objects[key]?.type === "GeometryCollection") ??
+    objectKeys[0] ??
+    null;
+  return {
+    name: objectName ?? null,
+    object: objectName ? rawTopoJson.objects[objectName] : null,
+  };
+}
+
 function buildMunicipalityPatternIndex(features) {
   const index = new Map();
   const addPattern = (set, value) => {
@@ -336,14 +353,16 @@ function buildMunicipalityPatternIndex(features) {
   return index;
 }
 
-async function prepareMunicipalityFeatures(rawTopoJson) {
+async function prepareMunicipalityFeatures(rawTopoJson, preferredObjectName = null) {
   const topojson = await ensureTopojsonClient();
-  const objectKeys = rawTopoJson?.objects ? Object.keys(rawTopoJson.objects) : [];
-  const objectName = objectKeys.find((key) => rawTopoJson.objects[key]?.type === "GeometryCollection") ?? objectKeys[0];
-  if (!objectName) {
+  const { name: objectName, object } = resolveTopoGeometryCollection(
+    rawTopoJson,
+    preferredObjectName,
+  );
+  if (!objectName || !object) {
     throw new Error("municipal topojson does not contain a geometry collection");
   }
-  const geojson = topojson.feature(rawTopoJson, rawTopoJson.objects[objectName]);
+  const geojson = topojson.feature(rawTopoJson, object);
   if (!geojson || !Array.isArray(geojson.features)) {
     throw new Error("Failed to convert municipal TopoJSON to GeoJSON");
   }
@@ -380,7 +399,95 @@ async function prepareMunicipalityFeatures(rawTopoJson) {
       .filter((feature) => normaliseString(feature.properties?.municipality_code))
       .map((feature) => [normaliseString(feature.properties.municipality_code), feature]),
   );
-  return { features, patternIndex, featureMap };
+  return { features, patternIndex, featureMap, objectName };
+}
+
+async function preparePrefectureFeatures(rawTopoJson, preferredObjectName = null) {
+  const topojson = await ensureTopojsonClient();
+  const { name: objectName, object } = resolveTopoGeometryCollection(
+    rawTopoJson,
+    preferredObjectName,
+  );
+  if (!objectName || !object || !Array.isArray(object.geometries)) {
+    throw new Error("TopoJSON does not contain a geometry collection");
+  }
+  const geometriesByPref = new Map();
+  for (const geometry of object.geometries) {
+    if (!geometry) continue;
+    const props = geometry.properties ?? {};
+    const prefNameRaw =
+      props.N03_001 ??
+      props.prefecture ??
+      props.pref_name ??
+      props.nam_ja ??
+      props.nam ??
+      "";
+    const prefName = normaliseString(prefNameRaw);
+    const municipalityCode = normaliseString(props.N03_007 ?? props.municipality_code ?? "");
+    const codeFromName = PREFECTURE_CODE_BY_NAME.get(prefName);
+    let codeFromId = null;
+    const rawId =
+      props.pref_code ?? props.prefecture_code ?? props.code ?? props.id ?? props.pref ?? "";
+    if (rawId !== undefined && rawId !== null) {
+      const cleaned = normaliseString(String(rawId));
+      if (/^\d{1,2}$/.test(cleaned)) {
+        codeFromId = cleaned.padStart(2, "0");
+      }
+    }
+    const prefCode = codeFromName ?? codeFromId ??
+      (municipalityCode ? municipalityCode.slice(0, 2).padStart(2, "0") : null);
+    if (!prefCode) continue;
+    let list = geometriesByPref.get(prefCode);
+    if (!list) {
+      list = [];
+      geometriesByPref.set(prefCode, list);
+    }
+    list.push(geometry);
+  }
+
+  const features = [];
+  geometriesByPref.forEach((geometries, prefCode) => {
+    if (!Array.isArray(geometries) || geometries.length === 0) return;
+    const mergedGeometry = topojson.merge(rawTopoJson, geometries);
+    if (!mergedGeometry) return;
+    const representativeProps = geometries[0]?.properties ?? {};
+    const regionName =
+      PREFECTURE_NAME_BY_CODE[prefCode] ??
+      representativeProps.N03_001 ??
+      representativeProps.prefecture ??
+      representativeProps.pref_name ??
+      representativeProps.nam_ja ??
+      representativeProps.nam ??
+      prefCode;
+    features.push({
+      type: "Feature",
+      id: prefCode,
+      geometry: mergedGeometry,
+      properties: {
+        pref_code: prefCode,
+        region_id: prefCode,
+        region_name: regionName,
+      },
+    });
+  });
+
+  features.sort((a, b) =>
+    String(a?.properties?.region_id ?? "").localeCompare(
+      String(b?.properties?.region_id ?? ""),
+      "ja-JP",
+    ),
+  );
+
+  const featureMap = new Map(
+    features.map((feature) => [
+      feature.properties?.region_id ?? feature.properties?.pref_code,
+      feature,
+    ]),
+  );
+  const nameResolver = (code) =>
+    featureMap.get(code)?.properties?.region_name ?? PREFECTURE_NAME_BY_CODE[code] ?? code;
+
+  return { features, featureMap, nameResolver, objectName };
 }
 
 function resolveMunicipalityCode(prefectureCode, municipalityKey, index) {
@@ -408,6 +515,11 @@ function resolveMunicipalityCode(prefectureCode, municipalityKey, index) {
 async function loadMunicipalResources() {
   const rawTopo = await fetchGzipJson(MUNICIPAL_TOPO_PATH);
   return prepareMunicipalityFeatures(rawTopo);
+}
+
+async function loadPrefectureResources() {
+  const rawTopo = await fetchGzipJson(PREFECTURE_TOPO_PATH);
+  return preparePrefectureFeatures(rawTopo);
 }
 
 function aggregatePartySeatsByYear(candidates, { termYears = TERM_YEARS } = {}) {
@@ -542,48 +654,6 @@ function aggregatePartySeatsByYear(candidates, { termYears = TERM_YEARS } = {}) 
     partyTotalsByYear: resultsByType[COUNCIL_TYPES.COMBINED].partyTotalsByYear,
     byCouncilType: resultsByType,
   };
-}
-
-function prepareBaseFeatures(rawGeoJson) {
-  if (!rawGeoJson || !Array.isArray(rawGeoJson.features)) {
-    throw new Error("Invalid GeoJSON data");
-  }
-  return rawGeoJson.features.map((feature) => {
-    const sourceId =
-      feature?.id ??
-      feature?.properties?.id ??
-      feature?.properties?.pref_code ??
-      feature?.properties?.prefecture ??
-      null;
-    const numericId =
-      typeof sourceId === "number"
-        ? sourceId
-        : Number.parseInt(normaliseString(sourceId), 10);
-    const prefCode =
-      Number.isInteger(numericId) && numericId > 0
-        ? String(numericId).padStart(2, "0")
-        : resolvePrefectureFromText(feature?.properties?.nam_ja) ??
-          resolvePrefectureFromText(feature?.properties?.nam);
-    if (!prefCode) {
-      throw new Error("Failed to resolve prefecture code for GeoJSON feature");
-    }
-    const regionName =
-      PREFECTURE_NAME_BY_CODE[prefCode] ??
-      normaliseString(feature?.properties?.nam_ja ?? "") ??
-      normaliseString(feature?.properties?.nam ?? "") ??
-      prefCode;
-    return {
-      type: "Feature",
-      id: numericId ?? prefCode,
-      geometry: feature.geometry,
-      properties: {
-        ...feature.properties,
-        pref_code: prefCode,
-        region_id: prefCode,
-        region_name: regionName,
-      },
-    };
-  });
 }
 
 function buildFeatureCollection(baseFeatures, partyMetrics, totalsByRegion) {
@@ -913,12 +983,17 @@ export async function initPartyMapDashboard({ candidates }) {
     return null;
   }
 
+  const prefectureResourcesPromise = loadPrefectureResources().catch((error) => {
+    console.error(error);
+    return null;
+  });
   const municipalResourcesPromise = loadMunicipalResources().catch((error) => {
     console.error(error);
     return null;
   });
   const municipalContainer = aggregation.byCouncilType?.[COUNCIL_TYPES.MUNICIPAL];
   const municipalYearCache = new Map();
+  let prefectureResources = null;
   let municipalResources = null;
 
   const resolveMunicipalYearData = (year) => {
@@ -1031,16 +1106,19 @@ export async function initPartyMapDashboard({ candidates }) {
     return map instanceof Map ? map : new Map();
   };
 
-  let prefectureGeoJson;
   try {
-    const response = await fetch(PREFECTURE_GEOJSON_PATH);
-    if (!response.ok) {
-      throw new Error(`Failed to load ${PREFECTURE_GEOJSON_PATH}`);
-    }
-    prefectureGeoJson = await response.json();
+    prefectureResources = await prefectureResourcesPromise;
   } catch (error) {
     console.error(error);
-    showInfo("日本地図データの読み込みに失敗しました。ネットワーク接続をご確認ください。");
+    prefectureResources = null;
+  }
+
+  if (
+    !prefectureResources ||
+    !Array.isArray(prefectureResources.features) ||
+    prefectureResources.features.length === 0
+  ) {
+    showInfo("都道府県地図データの読み込みに失敗しました。ネットワーク接続をご確認ください。");
     return {
       resize: () => {},
     };
@@ -1049,27 +1127,22 @@ export async function initPartyMapDashboard({ candidates }) {
   try {
     municipalResources = await municipalResourcesPromise;
   } catch (error) {
+    console.error(error);
     municipalResources = null;
   }
 
-  let prefectureFeatures;
-  try {
-    prefectureFeatures = prepareBaseFeatures(prefectureGeoJson);
-  } catch (error) {
-    console.error(error);
-    showInfo("GeoJSON から都道府県コードを解析できませんでした。データ構造をご確認ください。");
-    return {
-      resize: () => {},
-    };
-  }
-
-  const prefectureFeatureMap = new Map(
-    prefectureFeatures.map((feature) => [feature.properties.region_id, feature]),
-  );
-  const prefectureNameResolver = (code) =>
-    prefectureFeatureMap.get(code)?.properties?.region_name ??
-    PREFECTURE_NAME_BY_CODE[code] ??
-    code;
+  const prefectureFeatures = prefectureResources.features;
+  const prefectureFeatureMap =
+    prefectureResources.featureMap instanceof Map
+      ? prefectureResources.featureMap
+      : new Map(prefectureFeatures.map((feature) => [feature.properties.region_id, feature]));
+  const prefectureNameResolver =
+    typeof prefectureResources.nameResolver === "function"
+      ? prefectureResources.nameResolver
+      : (code) =>
+          prefectureFeatureMap.get(code)?.properties?.region_name ??
+          PREFECTURE_NAME_BY_CODE[code] ??
+          code;
 
   const geometryByMode = {
     [COUNCIL_TYPES.COMBINED]: {

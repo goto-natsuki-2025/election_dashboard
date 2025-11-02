@@ -9,9 +9,33 @@ import {
   renderPartyTrendChart,
   renderSummary,
 } from "./renderers.js";
-import { initCompensationDashboard } from "./compensation/dashboard.js";
-import { initElectionSearchDashboard } from "./search/dashboard.js";
-import { initPartyMapDashboard } from "./map/dashboard.js";
+import { DATA_PATH } from "./constants.js";
+
+const PREFETCHED_RESOURCES = new Set();
+function scheduleIdleTask(callback, timeout = 2000) {
+  if ("requestIdleCallback" in window) {
+    window.requestIdleCallback(callback, { timeout });
+  } else {
+    window.setTimeout(callback, timeout);
+  }
+}
+
+function prefetchResource(href, { rel = "prefetch", as } = {}) {
+  if (!href || PREFETCHED_RESOURCES.has(href)) return;
+  const link = document.createElement("link");
+  link.rel = rel;
+  link.href = href;
+  if (as) {
+    link.as = as;
+  }
+  link.crossOrigin = "anonymous";
+  document.head.appendChild(link);
+  PREFETCHED_RESOURCES.add(href);
+}
+
+const moduleUrl = (specifier) => new URL(specifier, import.meta.url).href;
+const MAP_PREFECTURE_TOPO_PATH = "assets/data/japan.topojson.gz";
+const MAP_MUNICIPAL_TOPO_PATH = "assets/data/municipal.topojson.gz";
 
 function setupViewSwitching(activations = {}) {
   const tabs = document.querySelectorAll(".dashboard-tab");
@@ -93,29 +117,56 @@ async function main() {
     return candidateBundlePromise;
   };
 
+  let compensationModulePromise;
+  const loadCompensationModule = () => {
+    if (!compensationModulePromise) {
+      compensationModulePromise = import("./compensation/dashboard.js");
+    }
+    return compensationModulePromise;
+  };
   let compensationInitPromise;
   const ensureCompensationReady = () => {
     if (!compensationInitPromise) {
-      compensationInitPromise = initCompensationDashboard();
+      compensationInitPromise = loadCompensationModule().then(({ initCompensationDashboard }) =>
+        initCompensationDashboard(),
+      );
     }
     return compensationInitPromise;
   };
 
+  let partyMapModulePromise;
+  const loadPartyMapModule = () => {
+    if (!partyMapModulePromise) {
+      partyMapModulePromise = import("./map/dashboard.js");
+    }
+    return partyMapModulePromise;
+  };
   let partyMapInitPromise;
   const ensurePartyMapReady = () => {
     if (!partyMapInitPromise) {
-      partyMapInitPromise = ensureCandidateBundle().then(({ candidates }) =>
-        initPartyMapDashboard({ candidates }),
-      );
+      partyMapInitPromise = Promise.all([
+        loadPartyMapModule(),
+        ensureCandidateBundle(),
+      ]).then(([module, { candidates }]) => module.initPartyMapDashboard({ candidates }));
     }
     return partyMapInitPromise;
   };
 
+  let searchModulePromise;
+  const loadSearchModule = () => {
+    if (!searchModulePromise) {
+      searchModulePromise = import("./search/dashboard.js");
+    }
+    return searchModulePromise;
+  };
   let searchInitPromise;
   const ensureSearchReady = () => {
     if (!searchInitPromise) {
-      searchInitPromise = ensureCandidateBundle().then(({ elections, candidates }) =>
-        initElectionSearchDashboard({ elections, candidates }),
+      searchInitPromise = Promise.all([
+        loadSearchModule(),
+        ensureCandidateBundle(),
+      ]).then(([module, { elections, candidates }]) =>
+        module.initElectionSearchDashboard({ elections, candidates }),
       );
     }
     return searchInitPromise;
@@ -147,6 +198,17 @@ async function main() {
         })
         .catch((error) => console.error(error)),
   });
+
+  scheduleIdleTask(() => {
+    prefetchResource(DATA_PATH.elections, { as: "fetch" });
+    prefetchResource(DATA_PATH.candidates, { as: "fetch" });
+    prefetchResource(DATA_PATH.compensation, { as: "fetch" });
+    prefetchResource(MAP_PREFECTURE_TOPO_PATH, { as: "fetch" });
+    prefetchResource(MAP_MUNICIPAL_TOPO_PATH, { as: "fetch" });
+    prefetchResource(moduleUrl("./compensation/dashboard.js"), { rel: "modulepreload" });
+    prefetchResource(moduleUrl("./map/dashboard.js"), { rel: "modulepreload" });
+    prefetchResource(moduleUrl("./search/dashboard.js"), { rel: "modulepreload" });
+  }, 3000);
 }
 
 main().catch((error) => {
