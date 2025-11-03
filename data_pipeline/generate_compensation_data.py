@@ -8,7 +8,7 @@ from typing import Dict, Optional, Tuple
 
 import pandas as pd
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / "data"
 DETAILS_PATH = DATA_DIR / "candidate_details.csv.gz"
 COMPENSATION_PATH = DATA_DIR / "SeatsAndCompensation.csv"

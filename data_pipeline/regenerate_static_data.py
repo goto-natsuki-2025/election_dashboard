@@ -4,7 +4,7 @@ from typing import Union
 
 import pandas as pd
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / "data"
 BASE_DB = DATA_DIR / "election_base.db"
 DETAILS_DB = DATA_DIR / "election_details.db"

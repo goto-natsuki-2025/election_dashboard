@@ -9,15 +9,28 @@ from typing import Any, Dict, Iterable, List, Optional
 
 import pandas as pd
 
-from generate_compensation_data import (
-    TERM_YEARS,
-    WINNING_KEYWORDS,
-    add_years_safe,
-    build_party_compensation,
-    to_iso_date,
-)
+if __package__ in {None, ""}:
+    import sys
 
-ROOT = Path(__file__).resolve().parent
+    CURRENT_DIR = Path(__file__).resolve().parent
+    sys.path.insert(0, str(CURRENT_DIR))
+    from generate_compensation_data import (  # type: ignore
+        TERM_YEARS,
+        WINNING_KEYWORDS,
+        add_years_safe,
+        build_party_compensation,
+        to_iso_date,
+    )
+else:
+    from .generate_compensation_data import (
+        TERM_YEARS,
+        WINNING_KEYWORDS,
+        add_years_safe,
+        build_party_compensation,
+        to_iso_date,
+    )
+
+ROOT = Path(__file__).resolve().parent.parent
 
 DATA_DIR = ROOT / "data"
 

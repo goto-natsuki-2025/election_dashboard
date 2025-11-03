@@ -7,7 +7,9 @@ import sys
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parent
+PIPELINE_DIR = Path(__file__).resolve().parent
+ROOT = PIPELINE_DIR.parent
+PROJECT_PARENT = ROOT.parent
 DATA_DIR = ROOT / "data"
 INTERMEDIATE_PATHS = [
     DATA_DIR / "election_summary.csv",
@@ -20,7 +22,7 @@ INTERMEDIATE_PATHS = [
 
 def run_step(description: str, command: list[str]) -> None:
     print(f"[pipeline] start: {description}")
-    process = subprocess.run(command, cwd=ROOT, check=False)
+    process = subprocess.run(command, cwd=PROJECT_PARENT, check=False)
     if process.returncode != 0:
         print(f"[pipeline] failed: {description} (exit code {process.returncode})")
         raise SystemExit(process.returncode)
@@ -43,9 +45,18 @@ def cleanup_intermediate_files() -> None:
 
 def main() -> None:
     steps = [
-        ("regenerate_static_data.py", [sys.executable, "regenerate_static_data.py"]),
-        ("generate_compensation_data.py", [sys.executable, "generate_compensation_data.py"]),
-        ("build_dashboard_data.py", [sys.executable, "build_dashboard_data.py"]),
+        (
+            "regenerate_static_data",
+            [sys.executable, "-m", "election_dashboard.data_pipeline.regenerate_static_data"],
+        ),
+        (
+            "generate_compensation_data",
+            [sys.executable, "-m", "election_dashboard.data_pipeline.generate_compensation_data"],
+        ),
+        (
+            "build_dashboard_data",
+            [sys.executable, "-m", "election_dashboard.data_pipeline.build_dashboard_data"],
+        ),
     ]
     for description, command in steps:
         run_step(description, command)
