@@ -106,7 +106,13 @@ function isGeneralMunicipalElection(value) {
   const trimmed = text
     .replace(/\.html?$/iu, "")
     .replace(/(?:[_\-\s])?\d{6,8}$/u, "");
-  return /(市|町|村|区)議会議員選挙$/u.test(trimmed);
+  if (!/(市|町|村|区)議会議員選挙/u.test(trimmed)) {
+    return false;
+  }
+  if (/(市|町|村|区)議会議員選挙[^\u4e00-\u9fff]*(補欠|再|出直し|解散|臨時)/u.test(trimmed)) {
+    return false;
+  }
+  return true;
 }
 
 function createAggregationState() {
@@ -265,7 +271,9 @@ function cleanMunicipalityKey(raw) {
   text = text.replace(/（.*?）/gu, "");
   text = text.replace(/\(.*?\)/g, "");
   text = text.replace(/第[0-9０-９]+回/gu, "");
-  text = text.replace(/(補欠|再|出直し|解散|統一|臨時)?選挙.*$/gu, "");
+  text = text.replace(/(補欠|再|出直し|解散|統一|臨時)選挙/gu, "選挙");
+  text = text.replace(/議会議員選挙/gu, "議会議員");
+  text = text.replace(/選挙(?:[_\-\s]*(?:予定|告示)?)?(?:[_\-\s]*\d{4,})?$/gu, "");
   text = text.replace(/議会議員/gu, "");
   text = text.replace(/議員/gu, "");
   text = text.replace(/議会/gu, "");

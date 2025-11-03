@@ -17,9 +17,14 @@ https://goto-natsuki-2025.github.io/election_dashboard/
 
 ## データの再生成
 
-- 選挙データや報酬データを更新した場合は、次のスクリプトで集計ファイルを再生成してください。  
-  `python generate_compensation_data.py`  
-  実行後に以下のファイルが更新されます。
-  - `data/party_compensation_summary_2020.csv`（政党別サマリー）
-  - `data/party_compensation_yearly_2020.csv`（政党×年別推移）
-  - `data/party_compensation_municipal_2020.csv`（政党×自治体×年の詳細、在任月数と期末手当支給回数を含む）
+選挙スクレイピング後に `election_dashboard/data/*.db` を更新した場合は、以下のコマンドで静的データをまとめて再生成できます。
+
+- `python -m election_dashboard.data_pipeline.run_pipeline`  
+  順番に次のスクリプトを実行します。
+  1. `regenerate_static_data.py`（`data/election_summary.csv`, `data/candidate_details.csv.gz` を出力）  
+  2. `generate_compensation_data.py`（各種報酬集計CSVを出力）  
+  3. `build_dashboard_data.py`（`*.json.gz` を更新）
+  実行後は上記の中間CSV／圧縮ファイルを自動で削除します。
+
+個別に確認したい場合は、従来どおり各スクリプトを単独で実行しても構いません。
+（例）`python -m election_dashboard.data_pipeline.regenerate_static_data`
