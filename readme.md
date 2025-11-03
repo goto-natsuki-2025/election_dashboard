@@ -24,5 +24,6 @@ https://goto-natsuki-2025.github.io/election_dashboard/
   1. `regenerate_static_data.py`（`data/election_summary.csv`, `data/candidate_details.csv.gz` を出力）  
   2. `generate_compensation_data.py`（各種報酬集計CSVを出力）  
   3. `build_dashboard_data.py`（`*.json.gz` を更新）
+  実行後は上記の中間CSV／圧縮ファイルを自動で削除します。
 
 個別に確認したい場合は、従来どおり各スクリプトを単独で実行しても構いません。
