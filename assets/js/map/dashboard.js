@@ -591,7 +591,8 @@ function aggregatePartySeatsByYear(candidates, { termYears = TERM_YEARS } = {}) 
   }
 
   const yearsSet = new Set(events.map((event) => event.year));
-  const years = Array.from(yearsSet).sort((a, b) => b - a);
+  const yearsDescending = Array.from(yearsSet).sort((a, b) => b - a);
+  const yearsAscending = [...yearsDescending].reverse();
 
   const statesByType = {
     [COUNCIL_TYPES.COMBINED]: createAggregationState(),
@@ -620,7 +621,7 @@ function aggregatePartySeatsByYear(candidates, { termYears = TERM_YEARS } = {}) 
 
   let eventIndex = 0;
 
-  for (const year of years) {
+  for (const year of yearsAscending) {
     while (eventIndex < events.length && events[eventIndex].year <= year) {
       const event = events[eventIndex];
       applyEventToState(statesByType[COUNCIL_TYPES.COMBINED], event, termYears);
@@ -656,7 +657,7 @@ function aggregatePartySeatsByYear(candidates, { termYears = TERM_YEARS } = {}) 
   }
 
   return {
-    years,
+    years: yearsDescending,
     totalsByYearPrefecture: resultsByType[COUNCIL_TYPES.COMBINED].totalsByYearPrefecture,
     partyShareByYear: resultsByType[COUNCIL_TYPES.COMBINED].partyShareByYear,
     partyTotalsByYear: resultsByType[COUNCIL_TYPES.COMBINED].partyTotalsByYear,
