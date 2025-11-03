@@ -3,11 +3,11 @@ name: Build Dashboard Data
 on:
   push:
     paths:
-      - data/candidate_details.csv.gz
-      - data/SeatsAndCompensation.csv
-      - data/election_summary.csv
-      - build_dashboard_data.py
-      - generate_compensation_data.py
+      - election_dashboard/data/candidate_details.csv.gz
+      - election_dashboard/data/SeatsAndCompensation.csv
+      - election_dashboard/data/election_summary.csv
+      - election_dashboard/data_pipeline/build_dashboard_data.py
+      - election_dashboard/data_pipeline/generate_compensation_data.py
   workflow_dispatch:
 
 permissions:
@@ -34,7 +34,7 @@ jobs:
           python -m pip install pandas
 
       - name: Build precomputed dashboard data
-        run: python build_dashboard_data.py
+        run: python -m election_dashboard.data_pipeline.build_dashboard_data
 
       - name: Commit generated artifacts
         uses: stefanzweifel/git-auto-commit-action@v5
