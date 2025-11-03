@@ -29,7 +29,7 @@ jobs:
           python -m pip install --upgrade pip pandas pyarrow
 
       - name: Generate static data
-        run: python -m election_dashboard.data_pipeline.regenerate_static_data
+        run: python -m data_pipeline.regenerate_static_data
 
       - name: Prepare preview artifacts
         run: |
