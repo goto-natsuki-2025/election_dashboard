@@ -25,7 +25,7 @@ jobs:
           python -m pip install --upgrade pip pandas pyarrow
 
       - name: Generate static data
-        run: python regenerate_static_data.py
+        run: python -m election_dashboard.data_pipeline.regenerate_static_data
 
       - name: Prepare production artifacts
         run: |
