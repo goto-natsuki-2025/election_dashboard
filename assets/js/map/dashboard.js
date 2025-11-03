@@ -693,6 +693,82 @@ function buildFeatureCollection(baseFeatures, partyMetrics, totalsByRegion) {
   };
 }
 
+function applyMetricsToSource(map, sourceId, partyMetrics, totalsByRegion, previousRegionIds = new Set()) {
+  if (!map || !sourceId) {
+    return { regionIds: new Set(), hasError: false };
+  }
+  const normaliseKey = (value) => normaliseString(value || "");
+  const defaultState = {
+    party_ratio: 0,
+    party_seats: 0,
+    total_seats: 0,
+    data_error: true,
+  };
+  const nextRegionIds = new Set();
+  let hasError = false;
+
+  const keys = new Set();
+  if (partyMetrics instanceof Map) {
+    partyMetrics.forEach((_, key) => {
+      const regionId = normaliseKey(key);
+      if (regionId) keys.add(regionId);
+    });
+  }
+  if (totalsByRegion instanceof Map) {
+    totalsByRegion.forEach((_, key) => {
+      const regionId = normaliseKey(key);
+      if (regionId) keys.add(regionId);
+    });
+  }
+
+  keys.forEach((regionId) => {
+    const metric = partyMetrics instanceof Map ? partyMetrics.get(regionId) ?? null : null;
+    const totalValue =
+      totalsByRegion instanceof Map && totalsByRegion.has(regionId)
+        ? totalsByRegion.get(regionId)
+        : metric?.total;
+    let totalSeats = Number(totalValue ?? 0);
+    if (!Number.isFinite(totalSeats) || totalSeats < 0) {
+      totalSeats = 0;
+    }
+    const hasTotal = Number.isFinite(totalSeats) && totalSeats > 0;
+    const seatsValue = Number(metric?.seats ?? 0);
+    const seats = Number.isFinite(seatsValue) ? seatsValue : 0;
+    let ratioValue = Number(metric?.ratio);
+    if (!Number.isFinite(ratioValue) && hasTotal && totalSeats > 0) {
+      ratioValue = totalSeats > 0 ? seats / totalSeats : 0;
+    }
+    const ratio = hasTotal && Number.isFinite(ratioValue) ? Math.max(0, Math.min(ratioValue, 1)) : 0;
+    const state = hasTotal
+      ? {
+          party_ratio: ratio,
+          party_seats: seats,
+          total_seats: totalSeats,
+          data_error: false,
+        }
+      : {
+          ...defaultState,
+        };
+    if (state.data_error) {
+      hasError = true;
+    }
+    map.setFeatureState({ source: sourceId, id: regionId }, state);
+    nextRegionIds.add(regionId);
+  });
+
+  previousRegionIds.forEach((regionId) => {
+    if (!regionId || nextRegionIds.has(regionId)) return;
+    map.setFeatureState({ source: sourceId, id: regionId }, defaultState);
+    hasError = true;
+  });
+
+  if (keys.size === 0) {
+    hasError = true;
+  }
+
+  return { regionIds: nextRegionIds, hasError };
+}
+
 function computeColorStops(metrics) {
   const values = Array.from(metrics?.values?.() ?? [])
     .map((entry) => Number(entry?.ratio ?? 0))
@@ -723,13 +799,20 @@ function computeColorStops(metrics) {
 }
 
 function buildColorExpression(stops) {
-  const baseExpression = ["interpolate", ["linear"], ["get", "party_ratio"]];
+  const ratioExpression = ["coalesce", ["feature-state", "party_ratio"], ["get", "party_ratio"], 0];
+  const baseExpression = ["interpolate", ["linear"], ratioExpression];
   for (const stop of stops) {
     baseExpression.push(stop.value, stop.color);
   }
+  const dataErrorExpression = [
+    "coalesce",
+    ["feature-state", "data_error"],
+    ["get", "data_error"],
+    false,
+  ];
   return [
     "case",
-    ["==", ["get", "data_error"], true],
+    ["==", dataErrorExpression, true],
     "rgba(248, 113, 113, 0.65)",
     baseExpression,
   ];
@@ -1296,20 +1379,39 @@ export async function initPartyMapDashboard({ candidates }) {
   root.querySelector(".choropleth-map-wrapper")?.appendChild(tooltip);
 
   let hoveredId = null;
-  const initialGeometry = getGeometryForMode(state.mode);
+  let activeRegionIds = new Set();
+  let currentGeometry = geometryForMode;
 
   const updateMapForSelection = (year, party, mode) => {
     const scope = getScopeMeta(mode);
     const geometry = getGeometryForMode(mode);
     const metrics = getMetricsFor(mode, year, party);
     const totals = getTotalsFor(mode, year);
-    const data = buildFeatureCollection(geometry.features, metrics, totals);
-    const hasDataError = Array.isArray(data?.features)
-      ? data.features.some((feature) => feature?.properties?.data_error)
-      : false;
     const source = map.getSource("regions");
+    let hasDataError = false;
     if (source) {
-      source.setData(data);
+      if (geometry !== currentGeometry) {
+        const nextData = buildFeatureCollection(geometry.features, metrics, totals);
+        source.setData(nextData);
+        currentGeometry = geometry;
+        activeRegionIds = new Set();
+      }
+      const result = applyMetricsToSource(
+        map,
+        "regions",
+        metrics instanceof Map ? metrics : new Map(),
+        totals instanceof Map ? totals : new Map(),
+        activeRegionIds,
+      );
+      activeRegionIds = result.regionIds;
+      hasDataError = result.hasError;
+    } else {
+      const fallbackData = buildFeatureCollection(geometry.features, metrics, totals);
+      hasDataError = Array.isArray(fallbackData?.features)
+        ? fallbackData.features.some((feature) => feature?.properties?.data_error)
+        : true;
+      currentGeometry = geometry;
+      activeRegionIds = new Set();
     }
     const colorStops = computeColorStops(metrics);
     if (map.getLayer("region-fill")) {
@@ -1329,6 +1431,14 @@ export async function initPartyMapDashboard({ candidates }) {
         mode === COUNCIL_TYPES.MUNICIPAL ? "visible" : "none",
       );
     }
+    if (
+      Array.isArray(geometry.features) &&
+      totals instanceof Map &&
+      totals.size < geometry.features.length
+    ) {
+      hasDataError = true;
+    }
+
     const legendItems =
       metrics instanceof Map && metrics.size > 0 ? buildLegendBreaks(colorStops) : [];
     const displayParty = party || "該当党派なし";
@@ -1356,7 +1466,7 @@ export async function initPartyMapDashboard({ candidates }) {
     map.addSource("regions", {
       type: "geojson",
       data: initialData,
-      generateId: true,
+      promoteId: "region_id",
     });
 
     map.addLayer({
@@ -1367,7 +1477,7 @@ export async function initPartyMapDashboard({ candidates }) {
         "fill-color": buildColorExpression(initialStops),
         "fill-opacity": [
           "case",
-          ["<", ["get", "total_seats"], 1],
+          ["<", ["coalesce", ["feature-state", "total_seats"], ["get", "total_seats"], 0], 1],
           0.25,
           ["boolean", ["feature-state", "hover"], false],
           0.9,
@@ -1442,10 +1552,21 @@ export async function initPartyMapDashboard({ candidates }) {
       }
 
       const regionName = feature.properties?.region_name ?? "―";
-      const ratio = Number(feature.properties?.party_ratio ?? 0);
-      const seats = Number(feature.properties?.party_seats ?? 0);
-      const total = Number(feature.properties?.total_seats ?? 0);
-      const hasError = Boolean(feature.properties?.data_error);
+      const stateValues =
+        feature.state ?? map.getFeatureState({ source: "regions", id: featureId }) ?? {};
+      const ratio = Number.isFinite(Number(stateValues.party_ratio))
+        ? Number(stateValues.party_ratio)
+        : Number(feature.properties?.party_ratio ?? 0);
+      const seats = Number.isFinite(Number(stateValues.party_seats))
+        ? Number(stateValues.party_seats)
+        : Number(feature.properties?.party_seats ?? 0);
+      const total = Number.isFinite(Number(stateValues.total_seats))
+        ? Number(stateValues.total_seats)
+        : Number(feature.properties?.total_seats ?? 0);
+      const hasError =
+        typeof stateValues.data_error === "boolean"
+          ? stateValues.data_error
+          : Boolean(feature.properties?.data_error);
       const detailText = hasError
         ? "DBにデータなし"
         : `${formatPercent(ratio)} (${seats.toLocaleString("ja-JP")} / ${total.toLocaleString("ja-JP")})`;
