@@ -271,8 +271,9 @@ function cleanMunicipalityKey(raw) {
   text = text.replace(/（.*?）/gu, "");
   text = text.replace(/\(.*?\)/g, "");
   text = text.replace(/第[0-9０-９]+回/gu, "");
-  text = text.replace(/(補欠|再|出直し|解散|統一|臨時)選挙.*$/gu, "");
-  text = text.replace(/選挙/gu, "");
+  text = text.replace(/(補欠|再|出直し|解散|統一|臨時)選挙/gu, "選挙");
+  text = text.replace(/議会議員選挙/gu, "議会議員");
+  text = text.replace(/選挙(?:[_\-\s]*(?:予定|告示)?)?(?:[_\-\s]*\d{4,})?$/gu, "");
   text = text.replace(/議会議員/gu, "");
   text = text.replace(/議員/gu, "");
   text = text.replace(/議会/gu, "");
