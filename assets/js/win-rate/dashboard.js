@@ -4,6 +4,7 @@ const MAX_PARTY_COUNT = 12;
 const YEARS_WINDOW = 20;
 const DEFAULT_AVERAGE_DAYS = 30;
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
+const OVERALL_PARTY_NAME = "全体";
 let chartInstance = null;
 let aggregatedDailyData = null;
 let currentAverageDays = DEFAULT_AVERAGE_DAYS;
@@ -78,30 +79,45 @@ function computeWindowAggregates(points, windowDays) {
 function aggregateDailyPoints(events, partyOrder) {
   const cutoff = new Date();
   cutoff.setFullYear(cutoff.getFullYear() - YEARS_WINDOW);
-  const parties = partyOrder.slice(0, MAX_PARTY_COUNT);
+  const partyList = [OVERALL_PARTY_NAME, ...partyOrder.slice(0, MAX_PARTY_COUNT)];
+  const parties = Array.from(new Set(partyList));
   const allowed = new Set(parties);
   const totals = new Map(); // party -> Map(date -> bucket)
+  const overallTotals = new Map();
 
   events.forEach((event) => {
-    if (!allowed.has(event.party)) return;
     if (!(event.date instanceof Date) || Number.isNaN(event.date.getTime())) return;
     if (event.date < cutoff) return;
 
     const dateOnly = new Date(event.date.getFullYear(), event.date.getMonth(), event.date.getDate());
     const dateKey = dateOnly.toISOString().slice(0, 10);
+    const targetParties = [];
+    if (allowed.has(event.party)) {
+      targetParties.push(event.party);
+    }
+    targetParties.push(OVERALL_PARTY_NAME);
 
-    let partyMap = totals.get(event.party);
-    if (!partyMap) {
-      partyMap = new Map();
-      totals.set(event.party, partyMap);
-    }
-    let bucket = partyMap.get(dateKey);
-    if (!bucket) {
-      bucket = { date: dateOnly, winners: 0, candidates: 0 };
-      partyMap.set(dateKey, bucket);
-    }
-    bucket.winners += event.winners ?? 0;
-    bucket.candidates += event.candidates ?? 0;
+    targetParties.forEach((party) => {
+      let partyMap = (party === OVERALL_PARTY_NAME ? overallTotals : totals.get(party));
+      if (!partyMap) {
+        partyMap = new Map();
+        if (party === OVERALL_PARTY_NAME) {
+          // already assigned to overallTotals
+        } else {
+          totals.set(party, partyMap);
+        }
+      }
+      let bucket = partyMap.get(dateKey);
+      if (!bucket) {
+        bucket = { date: dateOnly, winners: 0, candidates: 0 };
+        partyMap.set(dateKey, bucket);
+      }
+      bucket.winners += event.winners ?? 0;
+      bucket.candidates += event.candidates ?? 0;
+      if (party === OVERALL_PARTY_NAME) {
+        overallTotals.set(dateKey, bucket);
+      }
+    });
   });
 
   let minDate = null;
@@ -131,6 +147,26 @@ function aggregateDailyPoints(events, partyOrder) {
     pointsByParty.set(party, data);
   }
 
+  if (overallTotals.size > 0) {
+    const data = Array.from(overallTotals.values())
+      .filter((entry) => entry.candidates > 0)
+      .sort((a, b) => a.date - b.date)
+      .map((entry) => {
+        const ratio = entry.winners / entry.candidates;
+        const percent = Number((ratio * 100).toFixed(2));
+        if (!minDate || entry.date < minDate) minDate = entry.date;
+        if (!maxDate || entry.date > maxDate) maxDate = entry.date;
+        return {
+          value: [entry.date.getTime(), percent],
+          winners: entry.winners,
+          candidates: entry.candidates,
+        };
+      });
+    if (data.length > 0) {
+      pointsByParty.set(OVERALL_PARTY_NAME, data);
+    }
+  }
+
   return { parties, pointsByParty, minDate, maxDate };
 }
 
@@ -145,6 +181,24 @@ function renderSummary(summary) {
     empty.textContent = "データがありません。";
     container.appendChild(empty);
     return [];
+  }
+
+  const totals = summary?.totals ?? {};
+  if (Number.isFinite(totals.ratio)) {
+    const overallCard = document.createElement("article");
+    overallCard.className = "win-rate-summary-item overall";
+    const header = document.createElement("header");
+    const title = document.createElement("h3");
+    title.textContent = OVERALL_PARTY_NAME;
+    const value = document.createElement("strong");
+    value.className = "win-rate-summary-value";
+    value.textContent = formatPercent(totals.ratio);
+    header.append(title, value);
+    const meta = document.createElement("p");
+    meta.className = "win-rate-summary-meta";
+    meta.textContent = `当選 ${formatNumber(totals.winners ?? 0)} / 立候補 ${formatNumber(totals.candidates ?? 0)} 人`;
+    overallCard.append(header, meta);
+    container.appendChild(overallCard);
   }
 
   const limitedEntries = entries.slice(0, MAX_PARTY_COUNT);
@@ -184,13 +238,15 @@ function buildChartSeries(aggregated, averageDays) {
     const points = aggregated.pointsByParty.get(party);
     if (!points || points.length === 0) return;
 
-    scatterSeries.push({
-      name: party,
-      type: "scatter",
-      data: points,
-      symbolSize: 5,
-      itemStyle: { opacity: 0.35 },
-    });
+    if (party !== OVERALL_PARTY_NAME) {
+      scatterSeries.push({
+        name: `${party}（散布）`,
+        type: "scatter",
+        data: points,
+        symbolSize: 5,
+        itemStyle: { opacity: 0.35 },
+      });
+    }
 
     const aggregates = computeWindowAggregates(points, averageDays);
     if (aggregates.length > 0) {
@@ -322,6 +378,8 @@ function setupAverageControls() {
       if (!chartInstance || !aggregatedDailyData) return;
       aggregatedDailyData.parties.forEach((party) => {
         chartInstance.dispatchAction({ type: "legendUnSelect", name: party });
+        const scatterName = `${party}（散布）`;
+        chartInstance.dispatchAction({ type: "legendUnSelect", name: scatterName });
       });
     });
   }
