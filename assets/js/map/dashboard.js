@@ -1077,30 +1077,40 @@ function prepareYearSelect(select, years, defaultYear) {
   return fallback;
 }
 
-function prepareScopeSelect(select, options, defaultScope) {
-  if (!select) return defaultScope ?? COUNCIL_TYPES.COMBINED;
-  select.innerHTML = "";
+function prepareScopeSelect(container, options, defaultScope) {
+  if (!container) return defaultScope ?? COUNCIL_TYPES.COMBINED;
+  container.innerHTML = "";
   const fallback =
     options.find((option) => option.value === defaultScope && option.available)?.value ??
     options.find((option) => option.available)?.value ??
     options[0]?.value ??
     defaultScope ??
     COUNCIL_TYPES.COMBINED;
+  const usableOptions = options.filter((option) => option.available);
+  const disableGroup = usableOptions.length <= 1;
   options.forEach((option) => {
-    const opt = document.createElement("option");
-    opt.value = option.value;
-    opt.textContent = option.label;
-    if (!option.available) {
-      opt.disabled = true;
-    }
-    if (option.value === fallback) {
-      opt.selected = true;
-    }
-    select.appendChild(opt);
+    const optionWrapper = document.createElement("div");
+    optionWrapper.className = "choropleth-scope-option";
+    const input = document.createElement("input");
+    input.type = "radio";
+    input.name = "choropleth-scope";
+    input.id = `choropleth-scope-${option.value}`;
+    input.value = option.value;
+    input.checked = option.value === fallback;
+    input.disabled = disableGroup || !option.available;
+    optionWrapper.appendChild(input);
+    const label = document.createElement("label");
+    label.htmlFor = input.id;
+    label.textContent = option.label;
+    label.className = "choropleth-scope-pill";
+    optionWrapper.appendChild(label);
+    container.appendChild(optionWrapper);
   });
-  select.value = fallback;
-  const usableOptions = options.filter((option) => option.value);
-  select.disabled = usableOptions.length <= 1;
+  if (disableGroup) {
+    container.setAttribute("aria-disabled", "true");
+  } else {
+    container.removeAttribute("aria-disabled");
+  }
   return fallback;
 }
 
@@ -1157,7 +1167,6 @@ export async function initPartyMapDashboard({ candidates }) {
     showInfo("当選データから党派別の議席率を計算できませんでした。データセットをご確認ください。");
     partySelect?.setAttribute("disabled", "true");
     yearSelect?.setAttribute("disabled", "true");
-    scopeSelect?.setAttribute("disabled", "true");
     return null;
   }
 
@@ -1740,7 +1749,12 @@ export async function initPartyMapDashboard({ candidates }) {
   });
 
   scopeSelect?.addEventListener("change", (event) => {
-    const modeValue = event.target.value;
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement) || target.name !== "choropleth-scope") {
+      return;
+    }
+    if (!target.checked) return;
+    const modeValue = target.value;
     if (!modeValue) return;
     state.mode = modeValue;
     const scopeParties = getPartiesFor(state.mode, state.year);

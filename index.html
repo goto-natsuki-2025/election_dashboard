@@ -269,8 +269,15 @@
           </fieldset>
           <form class="choropleth-controls" aria-label="表示条件の選択">
             <div class="choropleth-control">
-              <label for="choropleth-scope">議会区分</label>
-              <select id="choropleth-scope"></select>
+              <span class="choropleth-control-label">議会区分</span>
+              <fieldset
+                id="choropleth-scope"
+                class="choropleth-scope-options"
+                role="radiogroup"
+                aria-label="議会区分"
+              >
+                <legend class="sr-only">議会区分</legend>
+              </fieldset>
             </div>
             <div class="choropleth-control">
               <label for="choropleth-year">年</label>
