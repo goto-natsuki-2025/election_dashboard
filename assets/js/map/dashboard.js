@@ -1484,7 +1484,7 @@ export async function initPartyMapDashboard({ candidates }) {
   if (initialHasError) {
     initialLegendItems.unshift({
       color: "rgba(248, 113, 113, 0.65)",
-      label: "DBにデータなし",
+      label: "欠損",
     });
   }
 
@@ -1636,7 +1636,7 @@ export async function initPartyMapDashboard({ candidates }) {
     if (hasDataError) {
       legendItems.unshift({
         color: "rgba(248, 113, 113, 0.65)",
-        label: "DBにデータなし",
+        label: "欠損",
       });
     }
     const ariaLabel =
@@ -1772,7 +1772,7 @@ export async function initPartyMapDashboard({ candidates }) {
           ? stateValues.data_error
           : Boolean(feature.properties?.data_error);
       const detailText = hasError
-        ? "DBにデータなし"
+        ? "欠損"
         : formatTooltipDetail(state.metric, { ratio, seats, total });
       tooltip.hidden = false;
       tooltip.innerHTML = `
