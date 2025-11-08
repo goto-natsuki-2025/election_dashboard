@@ -1362,12 +1362,12 @@ export async function initPartyMapDashboard({ candidates }) {
         (municipalResources && Array.isArray(municipalResources.features))),
   }));
 
-  const metricControls = Array.from(root.querySelectorAll('input[name="choropleth-metric"]'));
-  const getMetricFromControl = (control) =>
-    normalizeMetric(control?.value ?? MAP_METRICS.RATIO);
-  const initialMetric = getMetricFromControl(
-    metricControls.find((input) => input.checked) ?? metricControls[0],
-  );
+  const metricInputs = Array.from(root.querySelectorAll('input[name="choropleth-metric"]'));
+  const getMetricFromInput = (input) =>
+    normalizeMetric(input instanceof HTMLInputElement ? input.value : null);
+  const initialMetric =
+    getMetricFromInput(metricInputs.find((input) => input.checked) ?? metricInputs[0]) ??
+    MAP_METRICS.RATIO;
 
   const state = {
     metric: initialMetric,
@@ -1377,15 +1377,18 @@ export async function initPartyMapDashboard({ candidates }) {
   };
 
   const syncMetricControls = () => {
-    metricControls.forEach((input) => {
-      const metricValue = getMetricFromControl(input);
+    metricInputs.forEach((input) => {
+      const metricValue = getMetricFromInput(input);
       const isActive = metricValue === state.metric;
       if (input.checked !== isActive) {
         input.checked = isActive;
       }
       input.setAttribute("aria-checked", String(isActive));
       const label = input.id ? root.querySelector(`label[for="${input.id}"]`) : null;
-      label?.setAttribute("aria-selected", String(isActive));
+      if (label) {
+        label.setAttribute("aria-selected", String(isActive));
+        label.classList.toggle("is-active", isActive);
+      }
     });
   };
   syncMetricControls();
@@ -1745,18 +1748,20 @@ export async function initPartyMapDashboard({ candidates }) {
     updateMapForSelection(state.year, state.party, state.mode, state.metric);
   });
 
-  const handleMetricChange = (control) => {
-    const metricValue = getMetricFromControl(control);
+  const handleMetricChange = (input) => {
+    const metricValue = getMetricFromInput(input);
     if (metricValue === state.metric) return;
     state.metric = metricValue;
     syncMetricControls();
     updateMapForSelection(state.year, state.party, state.mode, state.metric);
   };
-  root.addEventListener("change", (event) => {
-    const target = event.target;
-    if (!target || typeof target.matches !== "function") return;
-    if (!target.matches('input[name="choropleth-metric"]')) return;
-    handleMetricChange(target);
+  metricInputs.forEach((input) => {
+    input.addEventListener("change", (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLInputElement)) return;
+      if (!target.checked) return;
+      handleMetricChange(target);
+    });
   });
 
   return {
