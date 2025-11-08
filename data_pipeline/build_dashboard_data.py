@@ -463,7 +463,9 @@ def build_party_timeline(events: List[Dict[str, Any]], top_n: int = 8, term_year
 
 
 def build_win_rate_dataset(
-    candidates: List[Dict[str, Any]], party_order: Optional[Iterable[str]] = None
+    candidates: List[Dict[str, Any]],
+    party_order: Optional[Iterable[str]] = None,
+    max_parties: int = 12,
 ) -> Dict[str, Any]:
     summary_totals: Dict[str, Dict[str, int]] = defaultdict(lambda: {"candidates": 0, "winners": 0})
     monthly_totals: Dict[str, Dict[str, Dict[str, int]]] = defaultdict(
@@ -504,6 +506,8 @@ def build_win_rate_dataset(
     remaining_parties = [party for party in summary_totals.keys() if party not in seen]
     remaining_parties.sort(key=lambda name: summary_totals[name]["winners"], reverse=True)
     ordered_parties.extend(remaining_parties)
+    if max_parties > 0:
+        ordered_parties = ordered_parties[:max_parties]
 
     total_candidates = 0
     total_winners = 0

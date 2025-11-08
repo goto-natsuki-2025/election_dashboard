@@ -1,5 +1,6 @@
 import { loadWinRateDataset } from "../data-loaders.js";
 
+const MAX_PARTY_COUNT = 12;
 let chartInstance = null;
 
 const formatPercent = (value, digits = 1) => {
@@ -18,7 +19,7 @@ const formatNumber = (value) => {
 
 function renderSummary(summary) {
   const container = document.getElementById("win-rate-summary");
-  if (!container) return;
+  if (!container) return [];
   container.innerHTML = "";
   const entries = Array.isArray(summary?.parties) ? summary.parties : [];
   if (entries.length === 0) {
@@ -26,10 +27,12 @@ function renderSummary(summary) {
     empty.className = "win-rate-summary-meta";
     empty.textContent = "データがありません。";
     container.appendChild(empty);
-    return;
+    return [];
   }
 
-  entries.forEach((entry) => {
+  const limitedEntries = entries.slice(0, MAX_PARTY_COUNT);
+
+  limitedEntries.forEach((entry) => {
     const item = document.createElement("article");
     item.className = "win-rate-summary-item";
 
@@ -48,41 +51,46 @@ function renderSummary(summary) {
     item.append(header, meta);
     container.appendChild(item);
   });
+
+  return limitedEntries.map((entry) => entry.party).filter(Boolean);
 }
 
-function buildChartSeries(timeline) {
+function buildChartSeries(timeline, allowedParties) {
   const months = Array.isArray(timeline?.months) ? timeline.months : [];
   const seriesEntries = Array.isArray(timeline?.series) ? timeline.series : [];
   const seriesMeta = new Map();
 
-  const echartsSeries = seriesEntries.map((entry) => {
-    seriesMeta.set(entry.party, entry);
-    const values = months.map((_, index) => {
-      const ratio = entry.ratios?.[index];
+  const echartsSeries = seriesEntries
+    .filter((entry) => !allowedParties || allowedParties.has(entry.party))
+    .slice(0, MAX_PARTY_COUNT)
+    .map((entry) => {
+      seriesMeta.set(entry.party, entry);
+      const values = months.map((_, index) => {
+        const ratio = entry.ratios?.[index];
       if (typeof ratio !== "number" || Number.isNaN(ratio)) {
         return null;
       }
       return Number((ratio * 100).toFixed(2));
     });
-    return {
-      name: entry.party,
-      type: "line",
-      smooth: true,
-      showSymbol: false,
-      connectNulls: false,
-      emphasis: { focus: "series" },
-      data: values,
-    };
-  });
+      return {
+        name: entry.party,
+        type: "line",
+        smooth: true,
+        showSymbol: false,
+        connectNulls: false,
+        emphasis: { focus: "series" },
+        data: values,
+      };
+    });
 
   return { months, echartsSeries, seriesMeta };
 }
 
-function renderChart(timeline) {
+function renderChart(timeline, allowedParties) {
   const container = document.getElementById("win-rate-chart");
   if (!container) return null;
 
-  const { months, echartsSeries, seriesMeta } = buildChartSeries(timeline);
+  const { months, echartsSeries, seriesMeta } = buildChartSeries(timeline, allowedParties);
 
   if (!months.length || echartsSeries.length === 0) {
     container.textContent = "データがありません。";
@@ -149,8 +157,9 @@ function renderChart(timeline) {
 
 export async function initWinRateDashboard() {
   const dataset = await loadWinRateDataset();
-  renderSummary(dataset.summary);
-  const chart = renderChart(dataset.timeline);
+  const parties = renderSummary(dataset.summary) ?? [];
+  const allowedParties = new Set(parties);
+  const chart = renderChart(dataset.timeline, allowedParties);
   return {
     resize: () => {
       chart?.resize?.();
