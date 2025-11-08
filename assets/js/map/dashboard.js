@@ -12,6 +12,32 @@ const COLOR_PALETTE = [
   "#1d4ed8",
 ];
 
+const MAP_METRICS = {
+  RATIO: "ratio",
+  SEATS: "seats",
+};
+
+const MAP_METRIC_META = {
+  [MAP_METRICS.RATIO]: {
+    label: "議席占有率",
+    legendLabel: (scopeMeta) => scopeMeta.legendLabel,
+    ariaLabel: (scopeMeta, year) => `${scopeMeta.label}の${year}年 議席率地図`,
+  },
+  [MAP_METRICS.SEATS]: {
+    label: "議員数",
+    legendLabel: (scopeMeta) => `${scopeMeta.unitLabel}別議員数`,
+    ariaLabel: (scopeMeta, year) => `${scopeMeta.label}の${year}年 議員数地図`,
+  },
+};
+
+function getMetricMeta(metric) {
+  return MAP_METRIC_META[metric] ?? MAP_METRIC_META[MAP_METRICS.RATIO];
+}
+
+function normalizeMetric(metric) {
+  return Object.values(MAP_METRICS).includes(metric) ? metric : MAP_METRICS.RATIO;
+}
+
 const COUNCIL_TYPES = {
   COMBINED: "combined",
   PREFECTURE: "prefecture",
@@ -769,9 +795,12 @@ function applyMetricsToSource(map, sourceId, partyMetrics, totalsByRegion, previ
   return { regionIds: nextRegionIds, hasError };
 }
 
-function computeColorStops(metrics) {
+function computeColorStops(metrics, metric = MAP_METRICS.RATIO) {
+  const metricType = normalizeMetric(metric);
   const values = Array.from(metrics?.values?.() ?? [])
-    .map((entry) => Number(entry?.ratio ?? 0))
+    .map((entry) =>
+      metricType === MAP_METRICS.SEATS ? Number(entry?.seats ?? 0) : Number(entry?.ratio ?? 0),
+    )
     .filter((value) => Number.isFinite(value) && value >= 0);
   if (values.length === 0) {
     return [
@@ -790,7 +819,8 @@ function computeColorStops(metrics) {
   const bucketCount = COLOR_PALETTE.length;
   for (let index = 0; index < bucketCount; index += 1) {
     const fraction = index / (bucketCount - 1);
-    const value = Math.min(max * fraction, 1);
+    const value =
+      metricType === MAP_METRICS.SEATS ? max * fraction : Math.min(max * fraction, 1);
     if (stops.length === 0 || value > stops[stops.length - 1].value) {
       stops.push({ value, color: COLOR_PALETTE[index] });
     }
@@ -798,9 +828,11 @@ function computeColorStops(metrics) {
   return stops;
 }
 
-function buildColorExpression(stops) {
-  const ratioExpression = ["coalesce", ["feature-state", "party_ratio"], ["get", "party_ratio"], 0];
-  const baseExpression = ["interpolate", ["linear"], ratioExpression];
+function buildColorExpression(stops, metric = MAP_METRICS.RATIO) {
+  const metricType = normalizeMetric(metric);
+  const stateKey = metricType === MAP_METRICS.SEATS ? "party_seats" : "party_ratio";
+  const valueExpression = ["coalesce", ["feature-state", stateKey], ["get", stateKey], 0];
+  const baseExpression = ["interpolate", ["linear"], valueExpression];
   for (const stop of stops) {
     baseExpression.push(stop.value, stop.color);
   }
@@ -829,12 +861,44 @@ function createLegendMarkup(breaks) {
     .join("");
 }
 
+function formatSeatCount(value) {
+  if (!Number.isFinite(value)) return 0;
+  const rounded = Math.round(value);
+  if (rounded < 0) {
+    return 0;
+  }
+  return rounded;
+}
+
+function formatSeatLabel(value) {
+  const count = formatSeatCount(value);
+  return `${count.toLocaleString("ja-JP")}議席`;
+}
+
 function formatPercent(value) {
   if (!Number.isFinite(value)) return "-";
   const percent = Number(value) * 100;
   const rounded = Math.round(percent * 10) / 10;
   const display = Math.abs(rounded) === 0 ? 0 : rounded;
   return `${display.toFixed(1)}%`;
+}
+
+function formatTooltipDetail(metric, { ratio, seats, total }) {
+  const metricType = normalizeMetric(metric);
+  const seatText = formatSeatLabel(seats);
+  const totalText = Number.isFinite(total) && total > 0 ? formatSeatLabel(total) : null;
+  const ratioText = Number.isFinite(ratio) ? formatPercent(ratio) : "-";
+
+  if (metricType === MAP_METRICS.SEATS) {
+    if (totalText) {
+      return `${seatText} / ${totalText}（${ratioText}）`;
+    }
+    return `${seatText}（${ratioText}）`;
+  }
+  if (totalText) {
+    return `${ratioText} (${seatText} / ${totalText})`;
+  }
+  return `${ratioText} (${seatText})`;
 }
 
 function renderSummaryText({
@@ -849,29 +913,49 @@ function renderSummaryText({
   maxSeats,
   maxTotal,
   extraNote,
+  metric = MAP_METRICS.RATIO,
 }) {
+  const metricType = normalizeMetric(metric);
   const seatsText =
     Number.isFinite(maxSeats) && Number.isFinite(maxTotal) && maxTotal > 0
       ? `${maxSeats.toLocaleString("ja-JP")} / ${maxTotal.toLocaleString("ja-JP")}議席`
       : `${maxSeats.toLocaleString("ja-JP")}議席`;
   const noteText = extraNote ? ` ${extraNote}` : "";
+  if (metricType === MAP_METRICS.SEATS) {
+    const seatsSummary =
+      Number.isFinite(maxSeats) && maxSeats >= 0 ? formatSeatLabel(maxSeats) : "―";
+    const totalSummary =
+      Number.isFinite(maxTotal) && maxTotal > 0 ? ` / ${formatSeatLabel(maxTotal)}` : "";
+    const ratioSummary = Number.isFinite(maxRatio) ? `（${formatPercent(maxRatio)}）` : "";
+    return `${year}年、${scopeLabel}で${party}は${coveredRegions} / ${availableRegions} ${unitLabel}で議席を獲得し、最大は<strong>${maxRegionName}の${seatsSummary}${totalSummary}${ratioSummary}</strong>です。${noteText}`;
+  }
   return `${year}年、${scopeLabel}で${party}は${coveredRegions} / ${availableRegions} ${unitLabel}で議席を獲得し、最大は<strong>${maxRegionName}の${formatPercent(maxRatio)}（${seatsText}）</strong>です。${noteText}`;
 }
 
-function updateLegend(container, selectedParty, scopeMeta, breaks) {
+function updateLegend(container, selectedParty, scopeMeta, metric, breaks) {
   if (!container) return;
+  const metricMeta = getMetricMeta(metric);
+  const legendLabel =
+    typeof metricMeta.legendLabel === "function"
+      ? metricMeta.legendLabel(scopeMeta)
+      : metricMeta.legendLabel ?? scopeMeta.legendLabel;
   container.innerHTML = `
     <div class="choropleth-legend-header">
       <strong>${selectedParty}</strong>
-      <span>${scopeMeta.legendLabel}</span>
+      <span>${legendLabel}</span>
     </div>
     ${createLegendMarkup(breaks)}
   `;
 }
 
-function buildLegendBreaks(stops) {
+function buildLegendBreaks(stops, metric) {
+  const metricType = normalizeMetric(metric);
   const formatLegendValue = (value) => {
     if (!Number.isFinite(value)) return "-";
+    if (metricType === MAP_METRICS.SEATS) {
+      const rounded = formatSeatCount(value);
+      return `${rounded.toLocaleString("ja-JP")}議席`;
+    }
     const percent = value * 100;
     if (percent === 0) return "0%";
     if (percent < 0.1) return `${percent.toFixed(2)}%`;
@@ -906,6 +990,7 @@ function updateSummary(
   year,
   scopeMeta,
   resolveRegionName,
+  metric = MAP_METRICS.RATIO,
 ) {
   if (!element) return;
   if (!(metrics instanceof Map) || metrics.size === 0) {
@@ -966,6 +1051,7 @@ function updateSummary(
     maxSeats,
     maxTotal,
     extraNote,
+    metric,
   });
 }
 
@@ -1276,11 +1362,36 @@ export async function initPartyMapDashboard({ candidates }) {
         (municipalResources && Array.isArray(municipalResources.features))),
   }));
 
+  const metricInputs = Array.from(root.querySelectorAll('input[name="choropleth-metric"]'));
+  const getMetricFromInput = (input) =>
+    normalizeMetric(input instanceof HTMLInputElement ? input.value : null);
+  const initialMetric =
+    getMetricFromInput(metricInputs.find((input) => input.checked) ?? metricInputs[0]) ??
+    MAP_METRICS.RATIO;
+
   const state = {
+    metric: initialMetric,
     mode: prepareScopeSelect(scopeSelect, scopeOptions, COUNCIL_TYPES.COMBINED),
     year: null,
     party: "",
   };
+
+  const syncMetricControls = () => {
+    metricInputs.forEach((input) => {
+      const metricValue = getMetricFromInput(input);
+      const isActive = metricValue === state.metric;
+      if (input.checked !== isActive) {
+        input.checked = isActive;
+      }
+      input.setAttribute("aria-checked", String(isActive));
+      const label = input.id ? root.querySelector(`label[for="${input.id}"]`) : null;
+      if (label) {
+        label.setAttribute("aria-selected", String(isActive));
+        label.classList.toggle("is-active", isActive);
+      }
+    });
+  };
+  syncMetricControls();
 
   state.year = prepareYearSelect(yearSelect, aggregation.years, defaultYear);
 
@@ -1298,10 +1409,10 @@ export async function initPartyMapDashboard({ candidates }) {
   const initialHasError = Array.isArray(initialData?.features)
     ? initialData.features.some((feature) => feature?.properties?.data_error)
     : false;
-  const initialStops = computeColorStops(initialMetrics);
+  const initialStops = computeColorStops(initialMetrics, state.metric);
   const initialLegendItems =
     initialMetrics instanceof Map && initialMetrics.size > 0
-      ? buildLegendBreaks(initialStops)
+      ? buildLegendBreaks(initialStops, state.metric)
       : [];
   if (initialHasError) {
     initialLegendItems.unshift({
@@ -1319,6 +1430,7 @@ export async function initPartyMapDashboard({ candidates }) {
     legendContainer,
     state.party || "該当党派なし",
     scopeMeta,
+    state.metric,
     initialLegendItems,
   );
   updateSummary(
@@ -1329,8 +1441,14 @@ export async function initPartyMapDashboard({ candidates }) {
     state.year,
     scopeMeta,
     geometryForMode.nameResolver,
+    state.metric,
   );
-  mapContainer?.setAttribute("aria-label", `${scopeMeta.label}の${state.year}年 議席率地図`);
+  const initialMetricMeta = getMetricMeta(state.metric);
+  const initialAriaLabel =
+    typeof initialMetricMeta.ariaLabel === "function"
+      ? initialMetricMeta.ariaLabel(scopeMeta, state.year)
+      : `${scopeMeta.label}の${state.year}年 ${initialMetricMeta.label}`;
+  mapContainer?.setAttribute("aria-label", initialAriaLabel);
 
   const maplibre = globalThis.maplibregl;
   if (!maplibre) {
@@ -1382,7 +1500,9 @@ export async function initPartyMapDashboard({ candidates }) {
   let activeRegionIds = new Set();
   let currentGeometry = geometryForMode;
 
-  const updateMapForSelection = (year, party, mode) => {
+  const updateMapForSelection = (year, party, mode, metric = state.metric) => {
+    const metricType = normalizeMetric(metric);
+    const metricMeta = getMetricMeta(metricType);
     const scope = getScopeMeta(mode);
     const geometry = getGeometryForMode(mode);
     const metrics = getMetricsFor(mode, year, party);
@@ -1413,9 +1533,13 @@ export async function initPartyMapDashboard({ candidates }) {
       currentGeometry = geometry;
       activeRegionIds = new Set();
     }
-    const colorStops = computeColorStops(metrics);
+    const colorStops = computeColorStops(metrics, metricType);
     if (map.getLayer("region-fill")) {
-      map.setPaintProperty("region-fill", "fill-color", buildColorExpression(colorStops));
+      map.setPaintProperty(
+        "region-fill",
+        "fill-color",
+        buildColorExpression(colorStops, metricType),
+      );
     }
     if (map.getLayer("region-outline")) {
       map.setLayoutProperty(
@@ -1440,7 +1564,7 @@ export async function initPartyMapDashboard({ candidates }) {
     }
 
     const legendItems =
-      metrics instanceof Map && metrics.size > 0 ? buildLegendBreaks(colorStops) : [];
+      metrics instanceof Map && metrics.size > 0 ? buildLegendBreaks(colorStops, metricType) : [];
     const displayParty = party || "該当党派なし";
     if (hasDataError) {
       legendItems.unshift({
@@ -1448,9 +1572,22 @@ export async function initPartyMapDashboard({ candidates }) {
         label: "DBにデータなし",
       });
     }
-    mapContainer?.setAttribute("aria-label", `${scope.label}の${year}年 議席率地図`);
-    updateLegend(legendContainer, displayParty, scope, legendItems);
-    updateSummary(summaryElement, displayParty, metrics, totals, year, scope, geometry.nameResolver);
+    const ariaLabel =
+      typeof metricMeta.ariaLabel === "function"
+        ? metricMeta.ariaLabel(scope, year)
+        : `${scope.label}の${year}年 ${metricMeta.label}`;
+    mapContainer?.setAttribute("aria-label", ariaLabel);
+    updateLegend(legendContainer, displayParty, scope, metricType, legendItems);
+    updateSummary(
+      summaryElement,
+      displayParty,
+      metrics,
+      totals,
+      year,
+      scope,
+      geometry.nameResolver,
+      metricType,
+    );
     if (hoveredId !== null) {
       map.setFeatureState({ source: "regions", id: hoveredId }, { hover: false });
       hoveredId = null;
@@ -1474,7 +1611,7 @@ export async function initPartyMapDashboard({ candidates }) {
       type: "fill",
       source: "regions",
       paint: {
-        "fill-color": buildColorExpression(initialStops),
+        "fill-color": buildColorExpression(initialStops, state.metric),
         "fill-opacity": [
           "case",
           ["<", ["coalesce", ["feature-state", "total_seats"], ["get", "total_seats"], 0], 1],
@@ -1486,7 +1623,7 @@ export async function initPartyMapDashboard({ candidates }) {
       },
     });
 
-    updateMapForSelection(state.year, state.party, state.mode);
+    updateMapForSelection(state.year, state.party, state.mode, state.metric);
 
     map.addLayer({
       id: "region-outline",
@@ -1569,7 +1706,7 @@ export async function initPartyMapDashboard({ candidates }) {
           : Boolean(feature.properties?.data_error);
       const detailText = hasError
         ? "DBにデータなし"
-        : `${formatPercent(ratio)} (${seats.toLocaleString("ja-JP")} / ${total.toLocaleString("ja-JP")})`;
+        : formatTooltipDetail(state.metric, { ratio, seats, total });
       tooltip.hidden = false;
       tooltip.innerHTML = `
         <strong>${regionName}</strong>
@@ -1590,7 +1727,7 @@ export async function initPartyMapDashboard({ candidates }) {
 
   partySelect?.addEventListener("change", (event) => {
     state.party = event.target.value;
-    updateMapForSelection(state.year, state.party, state.mode);
+    updateMapForSelection(state.year, state.party, state.mode, state.metric);
   });
 
   yearSelect?.addEventListener("change", (event) => {
@@ -1599,7 +1736,7 @@ export async function initPartyMapDashboard({ candidates }) {
     state.year = yearValue;
     const yearParties = getPartiesFor(state.mode, state.year);
     state.party = preparePartySelect(partySelect, yearParties, state.party);
-    updateMapForSelection(state.year, state.party, state.mode);
+    updateMapForSelection(state.year, state.party, state.mode, state.metric);
   });
 
   scopeSelect?.addEventListener("change", (event) => {
@@ -1608,7 +1745,23 @@ export async function initPartyMapDashboard({ candidates }) {
     state.mode = modeValue;
     const scopeParties = getPartiesFor(state.mode, state.year);
     state.party = preparePartySelect(partySelect, scopeParties, state.party);
-    updateMapForSelection(state.year, state.party, state.mode);
+    updateMapForSelection(state.year, state.party, state.mode, state.metric);
+  });
+
+  const handleMetricChange = (input) => {
+    const metricValue = getMetricFromInput(input);
+    if (metricValue === state.metric) return;
+    state.metric = metricValue;
+    syncMetricControls();
+    updateMapForSelection(state.year, state.party, state.mode, state.metric);
+  };
+  metricInputs.forEach((input) => {
+    input.addEventListener("change", (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLInputElement)) return;
+      if (!target.checked) return;
+      handleMetricChange(target);
+    });
   });
 
   return {
