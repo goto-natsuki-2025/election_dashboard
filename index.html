@@ -225,8 +225,44 @@
         <section class="card choropleth-card">
           <h2>党勢地図</h2>
           <p class="description">
-            年・議会区分・党派を選ぶと、全国47都道府県での議席占有率を濃淡で表示します。
+            年・議会区分・党派を選ぶと、全国47都道府県での議席占有率や議員数を切り替えて表示します。
           </p>
+          <fieldset class="choropleth-metric-tabs" role="tablist" aria-label="表示指標">
+            <legend class="sr-only">表示指標</legend>
+            <div class="choropleth-metric-option">
+              <input
+                type="radio"
+                name="choropleth-metric"
+                id="choropleth-metric-ratio"
+                value="ratio"
+                checked
+              />
+              <label
+                for="choropleth-metric-ratio"
+                class="choropleth-metric-tab"
+                role="tab"
+                aria-controls="choropleth-map"
+              >
+                議席占有率
+              </label>
+            </div>
+            <div class="choropleth-metric-option">
+              <input
+                type="radio"
+                name="choropleth-metric"
+                id="choropleth-metric-seats"
+                value="seats"
+              />
+              <label
+                for="choropleth-metric-seats"
+                class="choropleth-metric-tab"
+                role="tab"
+                aria-controls="choropleth-map"
+              >
+                議員数
+              </label>
+            </div>
+          </fieldset>
           <form class="choropleth-controls" aria-label="表示条件の選択">
             <div class="choropleth-control">
               <label for="choropleth-scope">議会区分</label>

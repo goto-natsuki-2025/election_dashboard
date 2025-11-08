@@ -25,6 +25,18 @@
         line-height: 1.6;
       }
 
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+
       header {
         padding: 8px clamp(16px, 4vw, 12px);
         background: var(--card);
@@ -291,6 +303,54 @@
       .choropleth-card {
         display: grid;
         gap: 16px;
+      }
+
+      .choropleth-metric-tabs {
+        display: inline-flex;
+        gap: 8px;
+        padding: 4px;
+        background: rgba(148, 163, 184, 0.15);
+        border-radius: 999px;
+        width: fit-content;
+        border: none;
+        margin: 0;
+      }
+
+      .choropleth-metric-option {
+        position: relative;
+      }
+
+      .choropleth-metric-option input {
+        position: absolute;
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .choropleth-metric-tab {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: none;
+        background: transparent;
+        color: var(--text-muted);
+        font: inherit;
+        font-weight: 600;
+        padding: 6px 16px;
+        border-radius: 999px;
+        cursor: pointer;
+        transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+      }
+
+      .choropleth-metric-option input:focus-visible + .choropleth-metric-tab,
+      .choropleth-metric-tab:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+
+      .choropleth-metric-option input:checked + .choropleth-metric-tab {
+        background: var(--accent);
+        color: #fff;
+        box-shadow: 0 10px 26px -18px rgba(37, 99, 235, 0.8);
       }
 
       .choropleth-controls {
