@@ -268,21 +268,17 @@
             </div>
           </fieldset>
           <form class="choropleth-controls" aria-label="表示条件の選択">
-            <div class="choropleth-control-group">
-              <span class="choropleth-control-heading">議会区分</span>
-              <fieldset
+            <fieldset class="choropleth-control-group">
+              <legend class="choropleth-control-heading">議会区分</legend>
+              <div
                 id="choropleth-scope"
                 class="choropleth-scope-options"
                 role="radiogroup"
                 aria-label="議会区分"
-              >
-                <legend class="sr-only">議会区分</legend>
-              </fieldset>
-            </div>
-            <div class="choropleth-control-group">
-              <div class="choropleth-control-header">
-                <label for="choropleth-year" class="choropleth-control-heading">年</label>
-              </div>
+              ></div>
+            </fieldset>
+            <fieldset class="choropleth-control-group">
+              <legend class="choropleth-control-heading">年</legend>
               <div class="choropleth-control choropleth-year-control">
                 <input
                   type="range"
@@ -296,15 +292,13 @@
                 />
                 <span id="choropleth-year-display" class="choropleth-year-display">-</span>
               </div>
-            </div>
-            <div class="choropleth-control-group">
-              <div class="choropleth-control-header">
-                <label for="choropleth-party" class="choropleth-control-heading">党派</label>
-              </div>
+            </fieldset>
+            <fieldset class="choropleth-control-group">
+              <legend class="choropleth-control-heading">党派</legend>
               <div class="choropleth-control choropleth-party-control">
                 <select id="choropleth-party"></select>
               </div>
-            </div>
+            </fieldset>
           </form>
           <div class="choropleth-map-wrapper">
             <div
