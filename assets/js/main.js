@@ -172,6 +172,23 @@ async function main() {
     return searchInitPromise;
   };
 
+  let winRateModulePromise;
+  const loadWinRateModule = () => {
+    if (!winRateModulePromise) {
+      winRateModulePromise = import("./win-rate/dashboard.js");
+    }
+    return winRateModulePromise;
+  };
+  let winRateInitPromise;
+  const ensureWinRateReady = () => {
+    if (!winRateInitPromise) {
+      winRateInitPromise = loadWinRateModule().then(({ initWinRateDashboard }) =>
+        initWinRateDashboard(),
+      );
+    }
+    return winRateInitPromise;
+  };
+
   setupViewSwitching({
     "compensation-dashboard": () =>
       ensureCompensationReady()
@@ -197,17 +214,27 @@ async function main() {
           });
         })
         .catch((error) => console.error(error)),
+    "win-rate-dashboard": () =>
+      ensureWinRateReady()
+        .then((dashboard) => {
+          requestAnimationFrame(() => {
+            dashboard?.resize?.();
+          });
+        })
+        .catch((error) => console.error(error)),
   });
 
   scheduleIdleTask(() => {
     prefetchResource(DATA_PATH.elections, { as: "fetch" });
     prefetchResource(DATA_PATH.candidates, { as: "fetch" });
     prefetchResource(DATA_PATH.compensation, { as: "fetch" });
+    prefetchResource(DATA_PATH.winRate, { as: "fetch" });
     prefetchResource(MAP_PREFECTURE_TOPO_PATH, { as: "fetch" });
     prefetchResource(MAP_MUNICIPAL_TOPO_PATH, { as: "fetch" });
     prefetchResource(moduleUrl("./compensation/dashboard.js"), { rel: "modulepreload" });
     prefetchResource(moduleUrl("./map/dashboard.js"), { rel: "modulepreload" });
     prefetchResource(moduleUrl("./search/dashboard.js"), { rel: "modulepreload" });
+    prefetchResource(moduleUrl("./win-rate/dashboard.js"), { rel: "modulepreload" });
   }, 3000);
 }
 

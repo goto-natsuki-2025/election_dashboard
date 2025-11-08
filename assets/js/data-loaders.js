@@ -11,6 +11,11 @@ const toNumber = (value) => {
   return Number.isFinite(num) ? num : null;
 };
 
+const toInteger = (value) => {
+  const num = toNumber(value);
+  return num === null ? null : Math.round(num);
+};
+
 export async function loadTopDashboardData() {
   const payload = await fetchGzipJson(DATA_PATH.top);
   const summary = payload?.summary ?? {};
@@ -162,4 +167,49 @@ export async function loadCandidateDetails(summaryIndex) {
       election_date: electionDate,
     };
   });
+}
+
+export async function loadWinRateDataset() {
+  const payload = await fetchGzipJson(DATA_PATH.winRate);
+  const summaryParties = Array.isArray(payload?.summary?.parties) ? payload.summary.parties : [];
+  const summaryTotals = payload?.summary?.totals ?? {};
+  const summary = summaryParties
+    .map((entry) => ({
+      party: normaliseString(entry.party),
+      candidates: toInteger(entry.candidates) ?? 0,
+      winners: toInteger(entry.winners) ?? 0,
+      ratio: toNumber(entry.ratio),
+    }))
+    .filter((entry) => entry.party);
+
+  const timelineMonths = Array.isArray(payload?.timeline?.months) ? payload.timeline.months : [];
+  const timelineSeries = Array.isArray(payload?.timeline?.series)
+    ? payload.timeline.series
+        .map((series) => ({
+          party: normaliseString(series.party),
+          ratios: Array.isArray(series.ratios) ? series.ratios.map((value) => toNumber(value)) : [],
+          winners: Array.isArray(series.winners)
+            ? series.winners.map((value) => toInteger(value))
+            : [],
+          candidates: Array.isArray(series.candidates)
+            ? series.candidates.map((value) => toInteger(value))
+            : [],
+        }))
+        .filter((series) => series.party)
+    : [];
+
+  return {
+    summary: {
+      parties: summary,
+      totals: {
+        candidates: toInteger(summaryTotals.candidates) ?? 0,
+        winners: toInteger(summaryTotals.winners) ?? 0,
+        ratio: toNumber(summaryTotals.ratio),
+      },
+    },
+    timeline: {
+      months: timelineMonths,
+      series: timelineSeries,
+    },
+  };
 }
