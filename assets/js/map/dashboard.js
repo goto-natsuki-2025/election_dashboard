@@ -1200,6 +1200,12 @@ export async function initPartyMapDashboard({ candidates }) {
   const yearDisplay = root.querySelector("#choropleth-year-display");
 
   const aggregation = aggregatePartySeatsByYear(Array.isArray(candidates) ? candidates : []);
+  const currentYear = new Date().getFullYear();
+  const DEFAULT_MIN_YEAR = 2000;
+  const sliderYears = Array.from(
+    { length: Math.max(currentYear - DEFAULT_MIN_YEAR + 1, 1) },
+    (_, idx) => DEFAULT_MIN_YEAR + idx,
+  );
   if (aggregation.years.length === 0) {
     showInfo("当選データから党派別の議席率を計算できませんでした。データセットをご確認ください。");
     partySelect?.setAttribute("disabled", "true");
@@ -1272,9 +1278,10 @@ export async function initPartyMapDashboard({ candidates }) {
     COUNCIL_TYPES.PREFECTURE,
     COUNCIL_TYPES.MUNICIPAL,
   ];
-  const currentYear = new Date().getFullYear();
   const defaultYear =
     aggregation.years.find((year) => year === currentYear) ?? aggregation.years[0];
+  const sliderDefaultYear =
+    sliderYears.includes(defaultYear) ? defaultYear : sliderYears[sliderYears.length - 1];
 
   const getAggregationForMode = (mode) => {
     const container = aggregation.byCouncilType?.[mode];
@@ -1427,7 +1434,7 @@ export async function initPartyMapDashboard({ candidates }) {
     if (yearSelect.tagName === "INPUT" && yearSelect.type === "range") {
       const index = Number(value);
       if (!Number.isFinite(index)) return null;
-      const options = aggregation.years;
+      const options = sliderYears;
       if (!Array.isArray(options) || options.length === 0) return null;
       const clamped = Math.max(0, Math.min(options.length - 1, Math.round(index)));
       return options[clamped];
@@ -1453,7 +1460,7 @@ export async function initPartyMapDashboard({ candidates }) {
   };
   syncMetricControls();
 
-  state.year = prepareYearSelect(yearSelect, aggregation.years, defaultYear, yearDisplay);
+  state.year = prepareYearSelect(yearSelect, sliderYears, sliderDefaultYear, yearDisplay);
 
   const getGeometryForMode = (mode) =>
     geometryByMode[mode] ?? geometryByMode[COUNCIL_TYPES.COMBINED];
