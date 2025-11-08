@@ -1,6 +1,6 @@
 import { loadWinRateDataset } from "../data-loaders.js";
 
-const MAX_PARTY_COUNT = 12;
+const MAX_PARTY_COUNT = 11;
 const YEARS_WINDOW = 20;
 const DEFAULT_AVERAGE_DAYS = 30;
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
