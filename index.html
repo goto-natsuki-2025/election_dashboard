@@ -268,17 +268,42 @@
             </div>
           </fieldset>
           <form class="choropleth-controls" aria-label="表示条件の選択">
-            <div class="choropleth-control">
-              <label for="choropleth-scope">議会区分</label>
-              <select id="choropleth-scope"></select>
+            <div class="choropleth-control-group">
+              <span class="choropleth-control-heading">議会区分</span>
+              <fieldset
+                id="choropleth-scope"
+                class="choropleth-scope-options"
+                role="radiogroup"
+                aria-label="議会区分"
+              >
+                <legend class="sr-only">議会区分</legend>
+              </fieldset>
             </div>
-            <div class="choropleth-control">
-              <label for="choropleth-year">年</label>
-              <select id="choropleth-year"></select>
+            <div class="choropleth-control-group">
+              <div class="choropleth-control-header">
+                <label for="choropleth-year" class="choropleth-control-heading">年</label>
+              </div>
+              <div class="choropleth-control choropleth-year-control">
+                <input
+                  type="range"
+                  id="choropleth-year"
+                  class="choropleth-year-slider"
+                  min="0"
+                  max="0"
+                  step="1"
+                  value="0"
+                  aria-label="表示年"
+                />
+                <span id="choropleth-year-display" class="choropleth-year-display">-</span>
+              </div>
             </div>
-            <div class="choropleth-control">
-              <label for="choropleth-party">党派</label>
-              <select id="choropleth-party"></select>
+            <div class="choropleth-control-group">
+              <div class="choropleth-control-header">
+                <label for="choropleth-party" class="choropleth-control-heading">党派</label>
+              </div>
+              <div class="choropleth-control choropleth-party-control">
+                <select id="choropleth-party"></select>
+              </div>
             </div>
           </form>
           <div class="choropleth-map-wrapper">

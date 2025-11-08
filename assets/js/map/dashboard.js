@@ -1062,45 +1062,91 @@ function getSortedParties(totalsMap) {
     .sort((a, b) => b.seats - a.seats);
 }
 
-function prepareYearSelect(select, years, defaultYear) {
-  if (!select) return defaultYear ?? null;
-  select.innerHTML = "";
-  years.forEach((year) => {
+function prepareYearSelect(control, years, defaultYear, displayElement = null) {
+  if (!control) return defaultYear ?? null;
+  const yearOptions = Array.isArray(years) ? years.slice() : [];
+  if (yearOptions.length === 0) {
+    control.disabled = true;
+    if (displayElement) displayElement.textContent = "-";
+    return defaultYear ?? null;
+  }
+  const fallback = yearOptions.includes(defaultYear)
+    ? defaultYear
+    : yearOptions[yearOptions.length - 1];
+  const updateDisplay = (indexOrYear) => {
+    const yearValue =
+      typeof indexOrYear === "number" && control.tagName === "INPUT"
+        ? yearOptions[Math.max(0, Math.min(yearOptions.length - 1, indexOrYear))]
+        : indexOrYear;
+    if (displayElement && Number.isFinite(yearValue)) {
+      displayElement.textContent = `${yearValue}年`;
+    }
+  };
+  if (control.tagName === "INPUT" && control.type === "range") {
+    control.min = "0";
+    control.max = String(Math.max(yearOptions.length - 1, 0));
+    control.step = "1";
+    const fallbackIndex = Math.max(0, yearOptions.indexOf(fallback));
+    control.value = String(fallbackIndex);
+    control.disabled = yearOptions.length <= 1;
+    updateDisplay(fallbackIndex);
+    control.addEventListener("input", (event) => {
+      const index = Number(event.target.value);
+      if (Number.isFinite(index)) {
+        updateDisplay(index);
+      }
+    });
+    control.dataset.yearOptions = JSON.stringify(yearOptions);
+    return fallback;
+  }
+  // Fallback to select behavior (should not be used in new UI)
+  control.innerHTML = "";
+  yearOptions.forEach((year) => {
     const option = document.createElement("option");
     option.value = String(year);
     option.textContent = `${year}年`;
-    select.appendChild(option);
+    control.appendChild(option);
   });
-  const fallback = years.includes(defaultYear) ? defaultYear : years[years.length - 1];
-  select.value = String(fallback);
-  select.disabled = years.length <= 1;
+  control.value = String(fallback);
+  control.disabled = yearOptions.length <= 1;
+  updateDisplay(fallback);
   return fallback;
 }
 
-function prepareScopeSelect(select, options, defaultScope) {
-  if (!select) return defaultScope ?? COUNCIL_TYPES.COMBINED;
-  select.innerHTML = "";
+function prepareScopeSelect(container, options, defaultScope) {
+  if (!container) return defaultScope ?? COUNCIL_TYPES.COMBINED;
+  container.innerHTML = "";
   const fallback =
     options.find((option) => option.value === defaultScope && option.available)?.value ??
     options.find((option) => option.available)?.value ??
     options[0]?.value ??
     defaultScope ??
     COUNCIL_TYPES.COMBINED;
+  const usableOptions = options.filter((option) => option.available);
+  const disableGroup = usableOptions.length <= 1;
   options.forEach((option) => {
-    const opt = document.createElement("option");
-    opt.value = option.value;
-    opt.textContent = option.label;
-    if (!option.available) {
-      opt.disabled = true;
-    }
-    if (option.value === fallback) {
-      opt.selected = true;
-    }
-    select.appendChild(opt);
+    const optionWrapper = document.createElement("div");
+    optionWrapper.className = "choropleth-scope-option";
+    const input = document.createElement("input");
+    input.type = "radio";
+    input.name = "choropleth-scope";
+    input.id = `choropleth-scope-${option.value}`;
+    input.value = option.value;
+    input.checked = option.value === fallback;
+    input.disabled = disableGroup || !option.available;
+    optionWrapper.appendChild(input);
+    const label = document.createElement("label");
+    label.htmlFor = input.id;
+    label.textContent = option.label;
+    label.className = "choropleth-scope-pill";
+    optionWrapper.appendChild(label);
+    container.appendChild(optionWrapper);
   });
-  select.value = fallback;
-  const usableOptions = options.filter((option) => option.value);
-  select.disabled = usableOptions.length <= 1;
+  if (disableGroup) {
+    container.setAttribute("aria-disabled", "true");
+  } else {
+    container.removeAttribute("aria-disabled");
+  }
   return fallback;
 }
 
@@ -1151,13 +1197,19 @@ export async function initPartyMapDashboard({ candidates }) {
   }
 
   const yearSelect = root.querySelector("#choropleth-year");
+  const yearDisplay = root.querySelector("#choropleth-year-display");
 
   const aggregation = aggregatePartySeatsByYear(Array.isArray(candidates) ? candidates : []);
+  const currentYear = new Date().getFullYear();
+  const DEFAULT_MIN_YEAR = 2000;
+  const sliderYears = Array.from(
+    { length: Math.max(currentYear - DEFAULT_MIN_YEAR + 1, 1) },
+    (_, idx) => DEFAULT_MIN_YEAR + idx,
+  );
   if (aggregation.years.length === 0) {
     showInfo("当選データから党派別の議席率を計算できませんでした。データセットをご確認ください。");
     partySelect?.setAttribute("disabled", "true");
     yearSelect?.setAttribute("disabled", "true");
-    scopeSelect?.setAttribute("disabled", "true");
     return null;
   }
 
@@ -1226,9 +1278,10 @@ export async function initPartyMapDashboard({ candidates }) {
     COUNCIL_TYPES.PREFECTURE,
     COUNCIL_TYPES.MUNICIPAL,
   ];
-  const currentYear = new Date().getFullYear();
   const defaultYear =
     aggregation.years.find((year) => year === currentYear) ?? aggregation.years[0];
+  const sliderDefaultYear =
+    sliderYears.includes(defaultYear) ? defaultYear : sliderYears[sliderYears.length - 1];
 
   const getAggregationForMode = (mode) => {
     const container = aggregation.byCouncilType?.[mode];
@@ -1376,6 +1429,20 @@ export async function initPartyMapDashboard({ candidates }) {
     party: "",
   };
 
+  const resolveYearFromControl = (value) => {
+    if (!yearSelect) return null;
+    if (yearSelect.tagName === "INPUT" && yearSelect.type === "range") {
+      const index = Number(value);
+      if (!Number.isFinite(index)) return null;
+      const options = sliderYears;
+      if (!Array.isArray(options) || options.length === 0) return null;
+      const clamped = Math.max(0, Math.min(options.length - 1, Math.round(index)));
+      return options[clamped];
+    }
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : null;
+  };
+
   const syncMetricControls = () => {
     metricInputs.forEach((input) => {
       const metricValue = getMetricFromInput(input);
@@ -1393,7 +1460,7 @@ export async function initPartyMapDashboard({ candidates }) {
   };
   syncMetricControls();
 
-  state.year = prepareYearSelect(yearSelect, aggregation.years, defaultYear);
+  state.year = prepareYearSelect(yearSelect, sliderYears, sliderDefaultYear, yearDisplay);
 
   const getGeometryForMode = (mode) =>
     geometryByMode[mode] ?? geometryByMode[COUNCIL_TYPES.COMBINED];
@@ -1417,7 +1484,7 @@ export async function initPartyMapDashboard({ candidates }) {
   if (initialHasError) {
     initialLegendItems.unshift({
       color: "rgba(248, 113, 113, 0.65)",
-      label: "DBにデータなし",
+      label: "欠損",
     });
   }
 
@@ -1569,7 +1636,7 @@ export async function initPartyMapDashboard({ candidates }) {
     if (hasDataError) {
       legendItems.unshift({
         color: "rgba(248, 113, 113, 0.65)",
-        label: "DBにデータなし",
+        label: "欠損",
       });
     }
     const ariaLabel =
@@ -1705,7 +1772,7 @@ export async function initPartyMapDashboard({ candidates }) {
           ? stateValues.data_error
           : Boolean(feature.properties?.data_error);
       const detailText = hasError
-        ? "DBにデータなし"
+        ? "欠損"
         : formatTooltipDetail(state.metric, { ratio, seats, total });
       tooltip.hidden = false;
       tooltip.innerHTML = `
@@ -1730,17 +1797,25 @@ export async function initPartyMapDashboard({ candidates }) {
     updateMapForSelection(state.year, state.party, state.mode, state.metric);
   });
 
-  yearSelect?.addEventListener("change", (event) => {
-    const yearValue = Number(event.target.value);
+  const handleYearChange = (event) => {
+    const yearValue = resolveYearFromControl(event.target.value);
     if (!Number.isFinite(yearValue)) return;
+    if (yearValue === state.year) return;
     state.year = yearValue;
     const yearParties = getPartiesFor(state.mode, state.year);
     state.party = preparePartySelect(partySelect, yearParties, state.party);
     updateMapForSelection(state.year, state.party, state.mode, state.metric);
-  });
+  };
+  yearSelect?.addEventListener("input", handleYearChange);
+  yearSelect?.addEventListener("change", handleYearChange);
 
   scopeSelect?.addEventListener("change", (event) => {
-    const modeValue = event.target.value;
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement) || target.name !== "choropleth-scope") {
+      return;
+    }
+    if (!target.checked) return;
+    const modeValue = target.value;
     if (!modeValue) return;
     state.mode = modeValue;
     const scopeParties = getPartiesFor(state.mode, state.year);

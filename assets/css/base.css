@@ -354,16 +354,62 @@
       }
 
       .choropleth-controls {
-        display: flex;
-        flex-wrap: wrap;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
         gap: 12px;
+      }
+
+      .choropleth-control-group {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        padding: 12px 16px;
+        background: rgba(148, 163, 184, 0.12);
+        border-radius: 12px;
+        border: 1px solid rgba(148, 163, 184, 0.35);
+      }
+
+      .choropleth-control-header {
+        display: flex;
+        justify-content: space-between;
         align-items: center;
+      }
+
+      .choropleth-control-heading {
+        font-weight: 600;
+        color: var(--text);
+      }
+
+      .choropleth-party-control {
+        width: 100%;
       }
 
       .choropleth-control {
         display: inline-flex;
         align-items: center;
         gap: 8px;
+      }
+
+      .choropleth-control-label {
+        font-weight: 600;
+        color: var(--text);
+      }
+
+      .choropleth-year-control {
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+
+      .choropleth-year-slider {
+        width: clamp(200px, 28vw, 320px);
+        accent-color: var(--accent);
+      }
+
+      .choropleth-year-display {
+        font-weight: 600;
+        color: var(--accent-strong);
+        min-width: 56px;
+        text-align: right;
       }
 
       .choropleth-controls label {
@@ -378,6 +424,58 @@
         border: 1px solid var(--border);
         font: inherit;
         background: var(--surface);
+      }
+
+      .choropleth-scope-options {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        border: none;
+        margin: 0;
+        padding: 0;
+      }
+
+      .choropleth-scope-option {
+        position: relative;
+      }
+
+      .choropleth-scope-option input {
+        position: absolute;
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .choropleth-scope-pill {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 6px 16px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        background: #fff;
+        font-weight: 600;
+        font-size: 14px;
+        color: var(--text-muted);
+        cursor: pointer;
+        transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease,
+          border-color 0.2s ease;
+      }
+
+      .choropleth-scope-pill:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+
+      .choropleth-scope-option input:checked + .choropleth-scope-pill {
+        background: var(--accent);
+        color: #fff;
+        border-color: var(--accent);
+        box-shadow: 0 10px 26px -18px rgba(37, 99, 235, 0.7);
+      }
+
+      .choropleth-scope-option input:disabled + .choropleth-scope-pill {
+        opacity: 0.45;
+        cursor: not-allowed;
       }
 
       .choropleth-map-wrapper {
