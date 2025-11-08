@@ -340,8 +340,24 @@
         <section class="card">
           <h2>政党別当選割合の推移</h2>
           <p class="description">
-            選挙実施月ごとに当選割合を集計し、党派別の変動を折れ線グラフで表示します。
+            日ごとの当選割合を散布図で表示し、任意の日数で集計した期間平均を折れ線で重ねています。期間設定を変えることで政党の勢いを把握しやすくなります。
           </p>
+          <form class="win-rate-controls" id="win-rate-average-form">
+            <label for="win-rate-average-days">集計期間（日）</label>
+            <div class="control-group">
+              <input
+                type="number"
+                id="win-rate-average-days"
+                name="win-rate-average-days"
+                min="1"
+                max="365"
+                step="1"
+                inputmode="numeric"
+              />
+              <button type="submit">反映</button>
+              <button type="button" id="win-rate-clear-series" class="button-secondary">全政党を非表示</button>
+            </div>
+          </form>
           <div
             id="win-rate-chart"
             class="chart"

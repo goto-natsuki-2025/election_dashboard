@@ -1,7 +1,12 @@
 import { loadWinRateDataset } from "../data-loaders.js";
 
 const MAX_PARTY_COUNT = 12;
+const YEARS_WINDOW = 20;
+const DEFAULT_AVERAGE_DAYS = 30;
+const DAY_IN_MS = 24 * 60 * 60 * 1000;
 let chartInstance = null;
+let aggregatedDailyData = null;
+let currentAverageDays = DEFAULT_AVERAGE_DAYS;
 
 const formatPercent = (value, digits = 1) => {
   if (typeof value !== "number" || Number.isNaN(value)) {
@@ -16,6 +21,118 @@ const formatNumber = (value) => {
   }
   return value.toLocaleString("ja-JP");
 };
+
+const formatRange = (range) => {
+  if (!Array.isArray(range) || range.length !== 2) return "";
+  const [start, end] = range;
+  const startLabel = new Date(start).toLocaleDateString("ja-JP");
+  const endLabel = new Date(end).toLocaleDateString("ja-JP");
+  return `${startLabel} 〜 ${endLabel}`;
+};
+
+function computeWindowAggregates(points, windowDays) {
+  if (!Array.isArray(points) || points.length === 0 || !Number.isFinite(windowDays) || windowDays <= 0) {
+    return [];
+  }
+  const windowMs = windowDays * DAY_IN_MS;
+  const result = [];
+  let bucketStart = points[0].value[0];
+  let bucketEnd = bucketStart + windowMs;
+  let winnersSum = 0;
+  let candidatesSum = 0;
+
+  points.forEach((point) => {
+    const timestamp = point.value[0];
+    while (timestamp >= bucketEnd) {
+      if (candidatesSum > 0) {
+        const ratio = winnersSum / candidatesSum;
+        result.push({
+          value: [bucketEnd, Number((ratio * 100).toFixed(2))],
+          winners: winnersSum,
+          candidates: candidatesSum,
+          range: [bucketStart, bucketEnd],
+        });
+      }
+      bucketStart = bucketEnd;
+      bucketEnd += windowMs;
+      winnersSum = 0;
+      candidatesSum = 0;
+    }
+    winnersSum += point.winners ?? 0;
+    candidatesSum += point.candidates ?? 0;
+  });
+
+  if (candidatesSum > 0) {
+    const ratio = winnersSum / candidatesSum;
+    result.push({
+      value: [bucketEnd, Number((ratio * 100).toFixed(2))],
+      winners: winnersSum,
+      candidates: candidatesSum,
+      range: [bucketStart, bucketEnd],
+    });
+  }
+
+  return result;
+}
+
+function aggregateDailyPoints(events, partyOrder) {
+  const cutoff = new Date();
+  cutoff.setFullYear(cutoff.getFullYear() - YEARS_WINDOW);
+  const parties = partyOrder.slice(0, MAX_PARTY_COUNT);
+  const allowed = new Set(parties);
+  const totals = new Map(); // party -> Map(date -> bucket)
+
+  events.forEach((event) => {
+    if (!allowed.has(event.party)) return;
+    if (!(event.date instanceof Date) || Number.isNaN(event.date.getTime())) return;
+    if (event.date < cutoff) return;
+
+    const dateOnly = new Date(event.date.getFullYear(), event.date.getMonth(), event.date.getDate());
+    const dateKey = dateOnly.toISOString().slice(0, 10);
+
+    let partyMap = totals.get(event.party);
+    if (!partyMap) {
+      partyMap = new Map();
+      totals.set(event.party, partyMap);
+    }
+    let bucket = partyMap.get(dateKey);
+    if (!bucket) {
+      bucket = { date: dateOnly, winners: 0, candidates: 0 };
+      partyMap.set(dateKey, bucket);
+    }
+    bucket.winners += event.winners ?? 0;
+    bucket.candidates += event.candidates ?? 0;
+  });
+
+  let minDate = null;
+  let maxDate = null;
+  const pointsByParty = new Map();
+
+  for (const party of parties) {
+    const partyMap = totals.get(party);
+    if (!partyMap) continue;
+
+    const data = Array.from(partyMap.values())
+      .filter((entry) => entry.candidates > 0)
+      .sort((a, b) => a.date - b.date)
+      .map((entry) => {
+        const ratio = entry.winners / entry.candidates;
+        const percent = Number((ratio * 100).toFixed(2));
+        if (!minDate || entry.date < minDate) minDate = entry.date;
+        if (!maxDate || entry.date > maxDate) maxDate = entry.date;
+        return {
+          value: [entry.date.getTime(), percent],
+          winners: entry.winners,
+          candidates: entry.candidates,
+        };
+      });
+
+    if (data.length === 0) continue;
+    pointsByParty.set(party, data);
+  }
+
+  return { parties, pointsByParty, minDate, maxDate };
+}
 
 function renderSummary(summary) {
   const container = document.getElementById("win-rate-summary");
@@ -55,44 +172,55 @@ function renderSummary(summary) {
   return limitedEntries.map((entry) => entry.party).filter(Boolean);
 }
 
-function buildChartSeries(timeline, allowedParties) {
-  const months = Array.isArray(timeline?.months) ? timeline.months : [];
-  const seriesEntries = Array.isArray(timeline?.series) ? timeline.series : [];
-  const seriesMeta = new Map();
+function buildChartSeries(aggregated, averageDays) {
+  if (!aggregated) {
+    return { series: [], minDate: null, maxDate: null };
+  }
 
-  const echartsSeries = seriesEntries
-    .filter((entry) => !allowedParties || allowedParties.has(entry.party))
-    .slice(0, MAX_PARTY_COUNT)
-    .map((entry) => {
-      seriesMeta.set(entry.party, entry);
-      const values = months.map((_, index) => {
-        const ratio = entry.ratios?.[index];
-      if (typeof ratio !== "number" || Number.isNaN(ratio)) {
-        return null;
-      }
-      return Number((ratio * 100).toFixed(2));
+  const scatterSeries = [];
+  const averageSeries = [];
+
+  aggregated.parties.forEach((party) => {
+    const points = aggregated.pointsByParty.get(party);
+    if (!points || points.length === 0) return;
+
+    scatterSeries.push({
+      name: party,
+      type: "scatter",
+      data: points,
+      symbolSize: 5,
+      itemStyle: { opacity: 0.35 },
     });
-      return {
-        name: entry.party,
+
+    const aggregates = computeWindowAggregates(points, averageDays);
+    if (aggregates.length > 0) {
+      averageSeries.push({
+        name: party,
         type: "line",
-        smooth: true,
-        showSymbol: false,
+        data: aggregates,
+        smooth: false,
+        showSymbol: true,
+        symbolSize: 5,
         connectNulls: false,
-        emphasis: { focus: "series" },
-        data: values,
-      };
-    });
+        lineStyle: { width: 2 },
+      });
+    }
+  });
 
-  return { months, echartsSeries, seriesMeta };
+  return {
+    series: [...scatterSeries, ...averageSeries],
+    minDate: aggregated.minDate,
+    maxDate: aggregated.maxDate,
+  };
 }
 
-function renderChart(timeline, allowedParties) {
+function renderAggregatedChart(averageDays) {
   const container = document.getElementById("win-rate-chart");
-  if (!container) return null;
+  if (!container || !aggregatedDailyData) return null;
 
-  const { months, echartsSeries, seriesMeta } = buildChartSeries(timeline, allowedParties);
+  const { series, minDate, maxDate } = buildChartSeries(aggregatedDailyData, averageDays);
 
-  if (!months.length || echartsSeries.length === 0) {
+  if (series.length === 0) {
     container.textContent = "データがありません。";
     if (chartInstance) {
       chartInstance.dispose();
@@ -107,37 +235,41 @@ function renderChart(timeline, allowedParties) {
   chartInstance = echarts.init(container, undefined, { renderer: "svg" });
 
   chartInstance.setOption({
-    grid: { top: 48, left: 56, right: 24, bottom: 32 },
+    grid: { top: 48, left: 64, right: 32, bottom: 48 },
     tooltip: {
-      trigger: "axis",
+      trigger: "item",
       formatter: (params) => {
-        if (!Array.isArray(params)) return "";
-        const lines = [params[0]?.axisValueLabel ?? ""];
-        params.forEach((item) => {
-          if (item.data == null) return;
-          const meta = seriesMeta.get(item.seriesName);
-          const winners = meta?.winners?.[item.dataIndex];
-          const candidates = meta?.candidates?.[item.dataIndex];
-          const detail =
-            typeof winners === "number" && typeof candidates === "number"
-              ? ` (${winners.toLocaleString("ja-JP")}/${candidates.toLocaleString("ja-JP")})`
-              : "";
-          const percent = typeof item.data === "number" ? item.data.toFixed(1) : "-";
-          lines.push(`${item.marker} ${item.seriesName}: ${percent}%${detail}`);
-        });
-        return lines.join("<br/>");
+        if (!params?.data) return "";
+        const seriesName = params.seriesName;
+        const dateLabel = new Date(params.value[0]).toLocaleDateString("ja-JP");
+        const percent = typeof params.value[1] === "number" ? params.value[1].toFixed(1) : "-";
+        const winners = params.data.winners ?? null;
+        const candidates = params.data.candidates ?? null;
+        const detail =
+          typeof winners === "number" && typeof candidates === "number"
+            ? `集計: 当選 ${formatNumber(winners)} / 立候補 ${formatNumber(candidates)} 人`
+            : null;
+        const rangeText = params.data.range ? `期間: ${formatRange(params.data.range)}` : null;
+        return [seriesName, `${dateLabel}: ${percent}%`, rangeText, detail]
+          .filter(Boolean)
+          .join("<br/>");
       },
     },
     legend: {
       type: "scroll",
       top: 0,
+      data: aggregatedDailyData.parties,
     },
     xAxis: {
-      type: "category",
-      boundaryGap: false,
-      data: months,
+      type: "time",
+      min: minDate ? minDate.getTime() : undefined,
+      max: maxDate ? maxDate.getTime() : undefined,
       axisLabel: {
-        formatter: (value) => value,
+        formatter: (value) => {
+          const date = new Date(value);
+          if (Number.isNaN(date.getTime())) return "";
+          return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+        },
       },
     },
     yAxis: {
@@ -149,17 +281,58 @@ function renderChart(timeline, allowedParties) {
       },
       splitLine: { show: true, lineStyle: { color: "#e2e8f0" } },
     },
-    series: echartsSeries,
+    dataZoom: [
+      {
+        type: "inside",
+        xAxisIndex: 0,
+      },
+      {
+        type: "slider",
+        xAxisIndex: 0,
+        height: 24,
+        bottom: 8,
+      },
+    ],
+    series,
   });
 
   return chartInstance;
 }
 
+function setupAverageControls() {
+  const form = document.getElementById("win-rate-average-form");
+  const input = document.getElementById("win-rate-average-days");
+  const clearButton = document.getElementById("win-rate-clear-series");
+  if (!form || !input) return;
+  input.value = String(currentAverageDays);
+
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const value = Number(input.value);
+    if (Number.isFinite(value) && value > 0 && value <= 365) {
+      currentAverageDays = Math.round(value);
+      renderAggregatedChart(currentAverageDays);
+    } else {
+      input.value = String(currentAverageDays);
+    }
+  });
+
+  if (clearButton) {
+    clearButton.addEventListener("click", () => {
+      if (!chartInstance || !aggregatedDailyData) return;
+      aggregatedDailyData.parties.forEach((party) => {
+        chartInstance.dispatchAction({ type: "legendUnSelect", name: party });
+      });
+    });
+  }
+}
+
 export async function initWinRateDashboard() {
   const dataset = await loadWinRateDataset();
   const parties = renderSummary(dataset.summary) ?? [];
-  const allowedParties = new Set(parties);
-  const chart = renderChart(dataset.timeline, allowedParties);
+  setupAverageControls();
+  aggregatedDailyData = aggregateDailyPoints(dataset.events ?? [], parties);
+  const chart = renderAggregatedChart(currentAverageDays);
   return {
     resize: () => {
       chart?.resize?.();

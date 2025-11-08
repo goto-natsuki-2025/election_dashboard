@@ -198,6 +198,19 @@ export async function loadWinRateDataset() {
         .filter((series) => series.party)
     : [];
 
+  const events = Array.isArray(payload?.events)
+    ? payload.events
+        .map((entry) => ({
+          party: normaliseString(entry.party),
+          electionKey: normaliseString(entry.election_key),
+          date: entry.date ? new Date(entry.date) : null,
+          candidates: toInteger(entry.candidates) ?? 0,
+          winners: toInteger(entry.winners) ?? 0,
+          ratio: toNumber(entry.ratio),
+        }))
+        .filter((entry) => entry.party && entry.date instanceof Date && !Number.isNaN(entry.date.getTime()))
+    : [];
+
   return {
     summary: {
       parties: summary,
@@ -211,5 +224,6 @@ export async function loadWinRateDataset() {
       months: timelineMonths,
       series: timelineSeries,
     },
+    events,
   };
 }

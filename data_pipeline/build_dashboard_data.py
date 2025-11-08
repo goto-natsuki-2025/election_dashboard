@@ -472,6 +472,7 @@ def build_win_rate_dataset(
         lambda: defaultdict(lambda: {"candidates": 0, "winners": 0})
     )
     months_set: Set[str] = set()
+    election_points: Dict[str, Dict[str, Any]] = {}
 
     for candidate in candidates:
         party = ensure_party_name(candidate.get("party"))
@@ -494,6 +495,26 @@ def build_win_rate_dataset(
         if is_winner:
             month_bucket["winners"] += 1
 
+        election_key = normalise_string(candidate.get("source_key")) or normalise_string(
+            candidate.get("source_file")
+        )
+        if not election_key:
+            continue
+        event_key = f"{party}::{election_key}::{election_date.isoformat()}"
+        point = election_points.get(event_key)
+        if point is None:
+            point = {
+                "party": party,
+                "election_key": election_key,
+                "date": election_date.isoformat(),
+                "candidates": 0,
+                "winners": 0,
+            }
+            election_points[event_key] = point
+        point["candidates"] += 1
+        if is_winner:
+            point["winners"] += 1
+
     months = sorted(months_set)
 
     ordered_parties: List[str] = []
@@ -508,6 +529,7 @@ def build_win_rate_dataset(
     ordered_parties.extend(remaining_parties)
     if max_parties > 0:
         ordered_parties = ordered_parties[:max_parties]
+    allowed_parties = set(ordered_parties)
 
     total_candidates = 0
     total_winners = 0
@@ -569,6 +591,28 @@ def build_win_rate_dataset(
         (total_winners / total_candidates) if total_candidates > 0 else None
     )
 
+    election_series = []
+    for point in election_points.values():
+        if point["party"] not in allowed_parties:
+            continue
+        candidates_count = point.get("candidates", 0)
+        if not candidates_count:
+            continue
+        winners_count = point.get("winners", 0)
+        ratio = winners_count / candidates_count if candidates_count else None
+        election_series.append(
+            {
+                "party": point["party"],
+                "election_key": point["election_key"],
+                "date": point["date"],
+                "candidates": candidates_count,
+                "winners": winners_count,
+                "ratio": ratio,
+            }
+        )
+
+    election_series.sort(key=lambda item: item["date"])
+
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "summary": {
@@ -583,6 +627,7 @@ def build_win_rate_dataset(
             "months": months,
             "series": timeline_series,
         },
+        "events": election_series,
     }
 
 
