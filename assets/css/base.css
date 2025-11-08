@@ -371,6 +371,22 @@
         color: var(--text);
       }
 
+      .choropleth-year-control {
+        gap: 12px;
+      }
+
+      .choropleth-year-slider {
+        width: clamp(160px, 20vw, 240px);
+        accent-color: var(--accent);
+      }
+
+      .choropleth-year-display {
+        font-weight: 600;
+        color: var(--accent-strong);
+        min-width: 56px;
+        text-align: right;
+      }
+
       .choropleth-controls label {
         font-weight: 600;
         color: var(--text);

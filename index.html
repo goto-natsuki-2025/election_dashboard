@@ -279,9 +279,19 @@
                 <legend class="sr-only">議会区分</legend>
               </fieldset>
             </div>
-            <div class="choropleth-control">
-              <label for="choropleth-year">年</label>
-              <select id="choropleth-year"></select>
+            <div class="choropleth-control choropleth-year-control">
+              <label for="choropleth-year" class="choropleth-control-label">年</label>
+              <input
+                type="range"
+                id="choropleth-year"
+                class="choropleth-year-slider"
+                min="0"
+                max="0"
+                step="1"
+                value="0"
+                aria-label="表示年"
+              />
+              <span id="choropleth-year-display" class="choropleth-year-display">-</span>
             </div>
             <div class="choropleth-control">
               <label for="choropleth-party">党派</label>

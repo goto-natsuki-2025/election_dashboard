@@ -1062,18 +1062,54 @@ function getSortedParties(totalsMap) {
     .sort((a, b) => b.seats - a.seats);
 }
 
-function prepareYearSelect(select, years, defaultYear) {
-  if (!select) return defaultYear ?? null;
-  select.innerHTML = "";
-  years.forEach((year) => {
+function prepareYearSelect(control, years, defaultYear, displayElement = null) {
+  if (!control) return defaultYear ?? null;
+  const yearOptions = Array.isArray(years) ? years.slice() : [];
+  if (yearOptions.length === 0) {
+    control.disabled = true;
+    if (displayElement) displayElement.textContent = "-";
+    return defaultYear ?? null;
+  }
+  const fallback = yearOptions.includes(defaultYear)
+    ? defaultYear
+    : yearOptions[yearOptions.length - 1];
+  const updateDisplay = (indexOrYear) => {
+    const yearValue =
+      typeof indexOrYear === "number" && control.tagName === "INPUT"
+        ? yearOptions[Math.max(0, Math.min(yearOptions.length - 1, indexOrYear))]
+        : indexOrYear;
+    if (displayElement && Number.isFinite(yearValue)) {
+      displayElement.textContent = `${yearValue}年`;
+    }
+  };
+  if (control.tagName === "INPUT" && control.type === "range") {
+    control.min = "0";
+    control.max = String(Math.max(yearOptions.length - 1, 0));
+    control.step = "1";
+    const fallbackIndex = Math.max(0, yearOptions.indexOf(fallback));
+    control.value = String(fallbackIndex);
+    control.disabled = yearOptions.length <= 1;
+    updateDisplay(fallbackIndex);
+    control.addEventListener("input", (event) => {
+      const index = Number(event.target.value);
+      if (Number.isFinite(index)) {
+        updateDisplay(index);
+      }
+    });
+    control.dataset.yearOptions = JSON.stringify(yearOptions);
+    return fallback;
+  }
+  // Fallback to select behavior (should not be used in new UI)
+  control.innerHTML = "";
+  yearOptions.forEach((year) => {
     const option = document.createElement("option");
     option.value = String(year);
     option.textContent = `${year}年`;
-    select.appendChild(option);
+    control.appendChild(option);
   });
-  const fallback = years.includes(defaultYear) ? defaultYear : years[years.length - 1];
-  select.value = String(fallback);
-  select.disabled = years.length <= 1;
+  control.value = String(fallback);
+  control.disabled = yearOptions.length <= 1;
+  updateDisplay(fallback);
   return fallback;
 }
 
@@ -1161,6 +1197,7 @@ export async function initPartyMapDashboard({ candidates }) {
   }
 
   const yearSelect = root.querySelector("#choropleth-year");
+  const yearDisplay = root.querySelector("#choropleth-year-display");
 
   const aggregation = aggregatePartySeatsByYear(Array.isArray(candidates) ? candidates : []);
   if (aggregation.years.length === 0) {
@@ -1385,6 +1422,20 @@ export async function initPartyMapDashboard({ candidates }) {
     party: "",
   };
 
+  const resolveYearFromControl = (value) => {
+    if (!yearSelect) return null;
+    if (yearSelect.tagName === "INPUT" && yearSelect.type === "range") {
+      const index = Number(value);
+      if (!Number.isFinite(index)) return null;
+      const options = aggregation.years;
+      if (!Array.isArray(options) || options.length === 0) return null;
+      const clamped = Math.max(0, Math.min(options.length - 1, Math.round(index)));
+      return options[clamped];
+    }
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : null;
+  };
+
   const syncMetricControls = () => {
     metricInputs.forEach((input) => {
       const metricValue = getMetricFromInput(input);
@@ -1402,7 +1453,7 @@ export async function initPartyMapDashboard({ candidates }) {
   };
   syncMetricControls();
 
-  state.year = prepareYearSelect(yearSelect, aggregation.years, defaultYear);
+  state.year = prepareYearSelect(yearSelect, aggregation.years, defaultYear, yearDisplay);
 
   const getGeometryForMode = (mode) =>
     geometryByMode[mode] ?? geometryByMode[COUNCIL_TYPES.COMBINED];
@@ -1739,14 +1790,17 @@ export async function initPartyMapDashboard({ candidates }) {
     updateMapForSelection(state.year, state.party, state.mode, state.metric);
   });
 
-  yearSelect?.addEventListener("change", (event) => {
-    const yearValue = Number(event.target.value);
+  const handleYearChange = (event) => {
+    const yearValue = resolveYearFromControl(event.target.value);
     if (!Number.isFinite(yearValue)) return;
+    if (yearValue === state.year) return;
     state.year = yearValue;
     const yearParties = getPartiesFor(state.mode, state.year);
     state.party = preparePartySelect(partySelect, yearParties, state.party);
     updateMapForSelection(state.year, state.party, state.mode, state.metric);
-  });
+  };
+  yearSelect?.addEventListener("input", handleYearChange);
+  yearSelect?.addEventListener("change", handleYearChange);
 
   scopeSelect?.addEventListener("change", (event) => {
     const target = event.target;
