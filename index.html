@@ -71,6 +71,16 @@
         <button
           type="button"
           class="dashboard-tab"
+          id="tab-win-rate"
+          data-view="win-rate-dashboard"
+          aria-controls="win-rate-dashboard"
+          aria-selected="false"
+        >
+          当選割合
+        </button>
+        <button
+          type="button"
+          class="dashboard-tab"
           id="tab-search"
           data-view="search-dashboard"
           aria-controls="search-dashboard"
@@ -311,6 +321,48 @@
             <div id="choropleth-info" class="choropleth-info" hidden></div>
           </div>
           <p id="choropleth-summary" class="choropleth-summary"></p>
+        </section>
+      </section>
+
+      <section
+        id="win-rate-dashboard"
+        class="dashboard-view"
+        role="region"
+        aria-labelledby="tab-win-rate"
+      >
+        <section class="card">
+          <h2>全期間の当選割合</h2>
+          <p class="description">
+            直近4年分の最新選挙データから、各政党の立候補者数と当選者数を集計して当選割合を算出しています。
+          </p>
+          <div id="win-rate-summary" class="win-rate-summary" aria-live="polite"></div>
+        </section>
+        <section class="card">
+          <h2>政党別当選割合の推移</h2>
+          <p class="description">
+            日ごとの当選割合を散布図で表示し、任意の日数で集計した期間平均を折れ線で重ねています。期間設定を変えることで政党の勢いを把握しやすくなります。
+          </p>
+          <form class="win-rate-controls" id="win-rate-average-form">
+            <label for="win-rate-average-days">集計期間（日）</label>
+            <div class="control-group">
+              <input
+                type="number"
+                id="win-rate-average-days"
+                name="win-rate-average-days"
+                min="1"
+                max="365"
+                step="1"
+                inputmode="numeric"
+              />
+              <button type="submit">反映</button>
+              <button type="button" id="win-rate-clear-series" class="button-secondary">全政党を非表示</button>
+            </div>
+          </form>
+          <div
+            id="win-rate-chart"
+            class="chart"
+            aria-label="政党別当選割合の推移"
+          ></div>
         </section>
       </section>
 

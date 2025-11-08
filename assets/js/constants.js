@@ -3,6 +3,7 @@
   elections: "data/election_summary.json.gz",
   candidates: "data/candidate_details.json.gz",
   compensation: "data/compensation.json.gz",
+  winRate: "data/win_rate.json.gz",
 };
 
 export const WINNING_KEYWORDS = [

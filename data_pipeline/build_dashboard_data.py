@@ -5,7 +5,7 @@ import re
 from collections import defaultdict
 from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Set
 
 import pandas as pd
 
@@ -41,6 +41,7 @@ CANDIDATE_OUTPUT_PATH = DATA_DIR / "candidate_details.json.gz"
 ELECTION_OUTPUT_PATH = DATA_DIR / "election_summary.json.gz"
 COMPENSATION_OUTPUT_PATH = DATA_DIR / "compensation.json.gz"
 TOP_DASHBOARD_OUTPUT_PATH = DATA_DIR / "top_dashboard.json.gz"
+WIN_RATE_OUTPUT_PATH = DATA_DIR / "win_rate.json.gz"
 
 PARTY_FOUNDATION_DATES = {
     "自由民主党": datetime(1955, 11, 15),
@@ -461,6 +462,175 @@ def build_party_timeline(events: List[Dict[str, Any]], top_n: int = 8, term_year
     }
 
 
+def build_win_rate_dataset(
+    candidates: List[Dict[str, Any]],
+    party_order: Optional[Iterable[str]] = None,
+    max_parties: int = 12,
+) -> Dict[str, Any]:
+    summary_totals: Dict[str, Dict[str, int]] = defaultdict(lambda: {"candidates": 0, "winners": 0})
+    monthly_totals: Dict[str, Dict[str, Dict[str, int]]] = defaultdict(
+        lambda: defaultdict(lambda: {"candidates": 0, "winners": 0})
+    )
+    months_set: Set[str] = set()
+    election_points: Dict[str, Dict[str, Any]] = {}
+
+    for candidate in candidates:
+        party = ensure_party_name(candidate.get("party"))
+        if not party:
+            continue
+        election_date = parse_iso_datetime(candidate.get("election_date"))
+        if not election_date:
+            continue
+        month_key = election_date.strftime("%Y-%m")
+        months_set.add(month_key)
+        is_winner = is_winning_outcome(candidate.get("outcome"))
+
+        summary_entry = summary_totals[party]
+        summary_entry["candidates"] += 1
+        if is_winner:
+            summary_entry["winners"] += 1
+
+        month_bucket = monthly_totals[month_key][party]
+        month_bucket["candidates"] += 1
+        if is_winner:
+            month_bucket["winners"] += 1
+
+        election_key = normalise_string(candidate.get("source_key")) or normalise_string(
+            candidate.get("source_file")
+        )
+        if not election_key:
+            continue
+        event_key = f"{party}::{election_key}::{election_date.isoformat()}"
+        point = election_points.get(event_key)
+        if point is None:
+            point = {
+                "party": party,
+                "election_key": election_key,
+                "date": election_date.isoformat(),
+                "candidates": 0,
+                "winners": 0,
+            }
+            election_points[event_key] = point
+        point["candidates"] += 1
+        if is_winner:
+            point["winners"] += 1
+
+    months = sorted(months_set)
+
+    ordered_parties: List[str] = []
+    seen: set[str] = set()
+    if party_order:
+        for party in party_order:
+            if party in summary_totals and party not in seen:
+                ordered_parties.append(party)
+                seen.add(party)
+    remaining_parties = [party for party in summary_totals.keys() if party not in seen]
+    remaining_parties.sort(key=lambda name: summary_totals[name]["winners"], reverse=True)
+    ordered_parties.extend(remaining_parties)
+    if max_parties > 0:
+        ordered_parties = ordered_parties[:max_parties]
+    allowed_parties = set(ordered_parties)
+
+    total_candidates = 0
+    total_winners = 0
+    summary_entries: List[Dict[str, Any]] = []
+    for party in ordered_parties:
+        totals = summary_totals.get(party)
+        if not totals:
+            continue
+        candidates_count = int(totals["candidates"])
+        winners_count = int(totals["winners"])
+        if candidates_count <= 0:
+            continue
+        total_candidates += candidates_count
+        total_winners += winners_count
+        ratio = winners_count / candidates_count if candidates_count else None
+        summary_entries.append(
+            {
+                "party": party,
+                "candidates": candidates_count,
+                "winners": winners_count,
+                "ratio": ratio,
+            }
+        )
+
+    timeline_series: List[Dict[str, Any]] = []
+    for party in ordered_parties:
+        ratios: List[Optional[float]] = []
+        winners_series: List[Optional[int]] = []
+        candidates_series: List[Optional[int]] = []
+        has_value = False
+        for month in months:
+            month_bucket = monthly_totals.get(month, {}).get(party)
+            if month_bucket and month_bucket["candidates"] > 0:
+                candidates_value = int(month_bucket["candidates"])
+                winners_value = int(month_bucket["winners"])
+                ratio = (
+                    winners_value / candidates_value if candidates_value > 0 else None
+                )
+                ratios.append(ratio)
+                winners_series.append(winners_value)
+                candidates_series.append(candidates_value)
+                if ratio is not None:
+                    has_value = True
+            else:
+                ratios.append(None)
+                winners_series.append(None)
+                candidates_series.append(None)
+        if has_value:
+            timeline_series.append(
+                {
+                    "party": party,
+                    "ratios": ratios,
+                    "winners": winners_series,
+                    "candidates": candidates_series,
+                }
+            )
+
+    overall_ratio = (
+        (total_winners / total_candidates) if total_candidates > 0 else None
+    )
+
+    election_series = []
+    for point in election_points.values():
+        if point["party"] not in allowed_parties:
+            continue
+        candidates_count = point.get("candidates", 0)
+        if not candidates_count:
+            continue
+        winners_count = point.get("winners", 0)
+        ratio = winners_count / candidates_count if candidates_count else None
+        election_series.append(
+            {
+                "party": point["party"],
+                "election_key": point["election_key"],
+                "date": point["date"],
+                "candidates": candidates_count,
+                "winners": winners_count,
+                "ratio": ratio,
+            }
+        )
+
+    election_series.sort(key=lambda item: item["date"])
+
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "summary": {
+            "parties": summary_entries,
+            "totals": {
+                "candidates": total_candidates,
+                "winners": total_winners,
+                "ratio": overall_ratio,
+            },
+        },
+        "timeline": {
+            "months": months,
+            "series": timeline_series,
+        },
+        "events": election_series,
+    }
+
+
 def build_top_dashboard_payload(candidates: List[Dict[str, Any]]):
     events, municipality_count = build_election_events(candidates)
     timeline = build_party_timeline(events)
@@ -503,6 +673,7 @@ def main() -> None:
     candidates = load_candidate_details(summary_index)
     compensation = build_party_compensation()
     top_dashboard = build_top_dashboard_payload(candidates)
+    win_rate = build_win_rate_dataset(candidates, top_dashboard["timeline"].get("parties"))
 
     # clean up compensation date fields to ISO strings for safety
     for row in compensation.get("rows", []):
@@ -523,6 +694,7 @@ def main() -> None:
         DATA_DIR / "candidate_details.json",
         DATA_DIR / "election_summary.json",
         DATA_DIR / "compensation.json",
+        DATA_DIR / "win_rate.json",
     ]:
         if stale.exists():
             stale.unlink()
@@ -531,12 +703,14 @@ def main() -> None:
     write_json(CANDIDATE_OUTPUT_PATH, build_payload(candidates))
     write_json(COMPENSATION_OUTPUT_PATH, compensation)
     write_json(TOP_DASHBOARD_OUTPUT_PATH, top_dashboard)
+    write_json(WIN_RATE_OUTPUT_PATH, win_rate)
     print(
         "Generated dashboard data:",
         ELECTION_OUTPUT_PATH.name,
         CANDIDATE_OUTPUT_PATH.name,
         COMPENSATION_OUTPUT_PATH.name,
         TOP_DASHBOARD_OUTPUT_PATH.name,
+        WIN_RATE_OUTPUT_PATH.name,
     )
 
 
