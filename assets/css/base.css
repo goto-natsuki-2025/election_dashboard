@@ -354,10 +354,34 @@
       }
 
       .choropleth-controls {
-        display: flex;
-        flex-wrap: wrap;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
         gap: 12px;
+      }
+
+      .choropleth-control-group {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        padding: 12px 16px;
+        background: rgba(148, 163, 184, 0.12);
+        border-radius: 12px;
+        border: 1px solid rgba(148, 163, 184, 0.35);
+      }
+
+      .choropleth-control-header {
+        display: flex;
+        justify-content: space-between;
         align-items: center;
+      }
+
+      .choropleth-control-heading {
+        font-weight: 600;
+        color: var(--text);
+      }
+
+      .choropleth-party-control {
+        width: 100%;
       }
 
       .choropleth-control {
@@ -373,10 +397,11 @@
 
       .choropleth-year-control {
         gap: 12px;
+        flex-wrap: wrap;
       }
 
       .choropleth-year-slider {
-        width: clamp(160px, 20vw, 240px);
+        width: clamp(200px, 28vw, 320px);
         accent-color: var(--accent);
       }
 
