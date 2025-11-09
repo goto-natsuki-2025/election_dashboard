@@ -290,82 +290,45 @@ function initPartyComparisonChart(parties, limit = 10) {
   };
 }
 
-function populatePartySelect(parties) {
-  const select = document.getElementById("optimization-search-party");
-  if (!select) return;
-  select.innerHTML = "";
-  const defaultOption = document.createElement("option");
-  defaultOption.value = "";
-  defaultOption.textContent = "すべて";
-  select.appendChild(defaultOption);
-  const partyNames = Array.from(
-    new Set(
-      parties
-        .map((party) => party.party)
-        .filter((name) => typeof name === "string" && name.trim().length > 0),
-    ),
-  ).sort((a, b) => a.localeCompare(b, "ja"));
-  partyNames.forEach((name) => {
-    const option = document.createElement("option");
-    option.value = name;
-    option.textContent = name;
-    select.appendChild(option);
-  });
-}
-
-function filterElectionResults(elections, { keyword, party, minGap }) {
+function filterElectionResults(elections, { keyword, minGap }) {
   if (!Array.isArray(elections)) {
     return [];
   }
   const rows = [];
   const keywordText = keyword?.trim().toLowerCase() ?? "";
   const minGapValue = Number.isFinite(minGap) && minGap > 0 ? minGap : 0;
-  const pickResult = (entry) => {
-    const partyResults = Array.isArray(entry.partyResults) ? entry.partyResults : [];
-    if (partyResults.length === 0) {
-      return null;
-    }
-    if (party) {
-      return partyResults.find((result) => result.party === party) ?? null;
-    }
-    return partyResults.reduce((best, current) => {
-      const bestGap = Math.max(best?.gap ?? 0, 0);
-      const currentGap = Math.max(current?.gap ?? 0, 0);
-      return currentGap > bestGap ? current : best;
-    }, null);
-  };
 
   elections.forEach((entry) => {
     const electionName = entry.electionKey || "";
     if (keywordText && !electionName.toLowerCase().includes(keywordText)) {
       return;
     }
-    const dateLabel = formatDate(entry.electionDate);
-    const result = pickResult(entry);
-    if (!result) {
-      return;
-    }
-    const partyName = result.party || "不明";
-    const potential = result.potentialWinners ?? 0;
-    const actual = result.actualWinners ?? 0;
-    const gap = Math.max(result.gap ?? potential - actual, 0);
-    if (party && partyName !== party) {
-      return;
-    }
+    const gap = Math.max(entry.totalGap ?? 0, 0);
     if (gap < minGapValue) {
       return;
     }
+    const dateLabel = formatDate(entry.electionDate);
     rows.push({
       election: entry,
       electionKey: entry.electionKey,
       electionDate: dateLabel,
-      party: partyName,
-      potential,
-      actual,
+      minWinningVote: entry.minWinningVote ?? null,
+      winnerCount: entry.winnerCount ?? null,
       gap,
     });
   });
-  rows.sort((a, b) => b.gap - a.gap);
+  rows.sort((a, b) => {
+    const dateA = a.election?.electionDate ?? null;
+    const dateB = b.election?.electionDate ?? null;
+    const timestampA =
+      dateA instanceof Date ? dateA.getTime() : Date.parse(dateA ?? "") || 0;
+    const timestampB =
+      dateB instanceof Date ? dateB.getTime() : Date.parse(dateB ?? "") || 0;
+    if (timestampA !== timestampB) {
+      return timestampB - timestampA;
+    }
+    return a.electionKey.localeCompare(b.electionKey, "ja");
+  });
   return rows;
 }
 
@@ -387,9 +350,8 @@ function renderSearchResults(rows, { onSelect, activeIndex = -1 } = {}) {
     row.innerHTML = `
       <td>${item.electionKey}</td>
       <td>${item.electionDate}</td>
-      <td>${item.party}</td>
-      <td class="numeric">${formatNumber(item.potential)}</td>
-      <td class="numeric">${formatNumber(item.actual)}</td>
+      <td class="numeric">${formatNumber(item.winnerCount ?? 0)}</td>
+      <td class="numeric">${formatNumber(item.minWinningVote ?? 0)}</td>
       <td class="numeric highlight">${formatNumber(item.gap)}</td>
     `;
     row.classList.add("optimization-search-row");
@@ -403,20 +365,17 @@ function renderSearchResults(rows, { onSelect, activeIndex = -1 } = {}) {
   });
 }
 
-function setupElectionSearch(elections, parties, chartController) {
-  populatePartySelect(parties);
+function setupElectionSearch(elections, chartController) {
   const form = document.getElementById("optimization-search-form");
   const keywordInput = document.getElementById("optimization-search-keyword");
-  const partySelect = document.getElementById("optimization-search-party");
   const minGapInput = document.getElementById("optimization-search-min-gap");
   const resetButton = document.getElementById("optimization-search-reset");
-  if (!form || !keywordInput || !partySelect || !minGapInput || !resetButton) {
+  if (!form || !keywordInput || !minGapInput || !resetButton) {
     return;
   }
 
   const state = {
     keyword: "",
-    party: "",
     minGap: 0,
   };
   let displayedRows = [];
@@ -444,31 +403,34 @@ function setupElectionSearch(elections, parties, chartController) {
 
   form.addEventListener("submit", (event) => event.preventDefault());
 
-  keywordInput.addEventListener("input", () => {
+  const debounce = (fn, delay = 250) => {
+    let timer = null;
+    return (...args) => {
+      if (timer) {
+        clearTimeout(timer);
+      }
+      timer = setTimeout(() => {
+        timer = null;
+        fn(...args);
+      }, delay);
+    };
+  };
+
+  const handleInputChange = debounce(() => {
     state.keyword = keywordInput.value;
-    chartController?.showOverall();
-    update(false);
-  });
-
-  partySelect.addEventListener("change", () => {
-    state.party = partySelect.value;
-    chartController?.showOverall();
-    update(false);
-  });
-
-  minGapInput.addEventListener("input", () => {
     const parsed = Number(minGapInput.value);
     state.minGap = Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
     chartController?.showOverall();
     update(false);
   });
 
+  keywordInput.addEventListener("input", handleInputChange);
+  minGapInput.addEventListener("input", handleInputChange);
+
   resetButton.addEventListener("click", () => {
     keywordInput.value = "";
-    partySelect.value = "";
     minGapInput.value = "";
     state.keyword = "";
-    state.party = "";
     state.minGap = 0;
     chartController?.showOverall();
     update(false);
@@ -482,7 +444,7 @@ export async function initVoteOptimizationDashboard() {
   renderSummary(data.summary);
   renderSummaryBoard(data.parties);
   const chartController = initPartyComparisonChart(data.parties);
-  setupElectionSearch(data.elections, data.parties, chartController);
+  setupElectionSearch(data.elections, chartController);
   renderPartyTable(data.parties);
   renderElectionTable(data.elections);
   return {
