@@ -227,3 +227,78 @@ export async function loadWinRateDataset() {
     events,
   };
 }
+
+export async function loadVoteOptimizationDataset() {
+  const payload = await fetchGzipJson(DATA_PATH.optimization);
+  const summary = payload?.summary ?? {};
+
+  const parseDate = (value) => {
+    if (!value) return null;
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  };
+
+  const parties = Array.isArray(payload?.parties)
+    ? payload.parties
+        .map((entry) => ({
+          party: normaliseString(entry.party),
+          elections: toInteger(entry.elections) ?? 0,
+          totalVotes: toInteger(entry.total_votes) ?? 0,
+          candidates: toInteger(entry.candidates) ?? 0,
+          actualWinners: toInteger(entry.actual_winners) ?? 0,
+          potentialWinners: toInteger(entry.potential_winners) ?? 0,
+          gap: toInteger(entry.gap) ?? 0,
+        }))
+        .filter((entry) => entry.party)
+    : [];
+
+  const elections = Array.isArray(payload?.elections)
+    ? payload.elections
+        .map((entry) => {
+          const partyResults = Array.isArray(entry.party_results)
+            ? entry.party_results
+                .map((result) => ({
+                  party: normaliseString(result.party),
+                  candidates: toInteger(result.candidates) ?? 0,
+                  totalVotes: toInteger(result.total_votes) ?? 0,
+                  actualWinners: toInteger(result.actual_winners) ?? 0,
+                  potentialWinners: toInteger(result.potential_winners) ?? 0,
+                  gap: toInteger(result.gap) ?? 0,
+                }))
+                .filter((result) => result.party)
+            : [];
+          const electionDate = parseDate(entry.election_date);
+          return {
+            electionKey: normaliseString(entry.election_key),
+            electionDate,
+            minWinningVote: toInteger(entry.min_winning_vote) ?? null,
+            totalCandidates: toInteger(entry.total_candidates) ?? 0,
+            winnerCount: toInteger(entry.winner_count) ?? 0,
+            totalVotes: toInteger(entry.total_votes) ?? 0,
+            totalGap: toInteger(entry.total_gap) ?? 0,
+            partyResults,
+          };
+        })
+        .filter(
+          (entry) =>
+            entry.electionKey &&
+            entry.electionDate instanceof Date &&
+            !Number.isNaN(entry.electionDate.getTime()),
+        )
+    : [];
+
+  return {
+    summary: {
+      electionsAnalyzed: toInteger(summary.elections_analyzed) ?? 0,
+      excludedElections: toInteger(summary.excluded_elections) ?? 0,
+      excludedBreakdown:
+        typeof summary.excluded_breakdown === "object" && summary.excluded_breakdown
+          ? summary.excluded_breakdown
+          : {},
+      minDate: parseDate(summary.min_date),
+      maxDate: parseDate(summary.max_date),
+    },
+    parties,
+    elections,
+  };
+}

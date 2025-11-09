@@ -165,6 +165,12 @@
         font-size: 14px;
       }
 
+      .help-text {
+        margin: 8px 0 0;
+        font-size: 12px;
+        color: var(--text-muted);
+      }
+
       .party-metric-grid {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));

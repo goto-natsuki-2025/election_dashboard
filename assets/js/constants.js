@@ -4,6 +4,7 @@
   candidates: "data/candidate_details.json.gz",
   compensation: "data/compensation.json.gz",
   winRate: "data/win_rate.json.gz",
+  optimization: "data/vote_optimization.json.gz",
 };
 
 export const WINNING_KEYWORDS = [
