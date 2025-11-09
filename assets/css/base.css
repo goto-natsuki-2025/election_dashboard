@@ -188,18 +188,31 @@
         box-shadow: 0 12px 32px -22px rgba(37, 99, 235, 0.35);
       }
 
+      .summary-board-highlight {
+        background: #fff;
+        border-radius: 14px;
+        padding: 10px 12px 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        align-items: flex-end;
+        box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.1);
+      }
+
       .summary-board-card h3 {
         margin: 0;
         font-size: 15px;
         font-weight: 600;
         color: var(--text);
+        align-self: stretch;
+        text-align: left;
       }
 
       .summary-board-gap {
         font-size: 32px;
         font-weight: 700;
         color: var(--accent-strong);
-        margin: 4px 0;
+        text-align: right;
         font-variant-numeric: tabular-nums;
       }
 
@@ -307,16 +320,6 @@
         padding: 6px 14px;
         cursor: pointer;
         font-weight: 600;
-      }
-
-      .summary-board-highlight {
-        background: #fff;
-        border-radius: 14px;
-        padding: 12px;
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-        box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.1);
       }
 
       .win-rate-controls .button-secondary {
