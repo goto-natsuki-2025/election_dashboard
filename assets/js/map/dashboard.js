@@ -278,8 +278,16 @@ function hasSeatsForContainer(container) {
   return false;
 }
 
+const VARIANT_CHAR_REPLACEMENTS = [
+  [/檮/g, "梼"],
+];
+
 function normalizeForMatching(value) {
-  return normaliseString(value)
+  let text = normaliseString(value);
+  for (const [pattern, replacement] of VARIANT_CHAR_REPLACEMENTS) {
+    text = text.replace(pattern, replacement);
+  }
+  return text
     .replace(/[_\s\u3000・･~〜\\/-]/g, "")
     .replace(/[－―‐−]/g, "")
     .replace(/[()（）]/g, "")
