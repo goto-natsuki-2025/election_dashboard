@@ -14,7 +14,16 @@ export function isWinningOutcome(outcome) {
 
 export function ensurePartyName(name) {
   const text = normaliseString(name);
-  if (!text || text === "-" || text.includes("\u7121\u6240\u5c5e")) {
+  const lower = text.toLowerCase();
+  if (
+    !text ||
+    text === "-" ||
+    text.includes("\u7121\u6240\u5c5e") ||
+    lower === "nan" ||
+    lower === "na" ||
+    lower === "none" ||
+    lower === "\u306a\u3057"
+  ) {
     return "\u7121\u6240\u5c5e";
   }
   return text;
