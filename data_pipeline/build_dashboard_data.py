@@ -60,6 +60,7 @@ PARTY_FOUNDATION_DATES = {
 
 SOURCE_PATTERN = re.compile(r"^(.*)_(\d{8})$")
 
+EXECUTIVE_KEYWORDS = ["市長", "町長", "村長", "区長", "知事"]
 
 def normalise_string(value: Any) -> str:
     return "" if value is None else str(value).strip()
@@ -692,6 +693,7 @@ def build_vote_optimization_dataset(candidates: List[Dict[str, Any]]) -> Dict[st
 
     included_elections: List[Dict[str, Any]] = []
     excluded_reasons = {
+        "executive_election": 0,
         "no_winners": 0,
         "missing_winner_votes": 0,
         "invalid_min_vote": 0,
@@ -710,7 +712,14 @@ def build_vote_optimization_dataset(candidates: List[Dict[str, Any]]) -> Dict[st
     min_date: Optional[datetime] = None
     max_date: Optional[datetime] = None
 
+    def is_executive_election(name: str) -> bool:
+        return any(keyword in name for keyword in EXECUTIVE_KEYWORDS)
+
     for entry in elections.values():
+        election_name = entry.get("election_key", "")
+        if election_name and is_executive_election(election_name):
+            excluded_reasons["executive_election"] += 1
+            continue
         if entry["winner_count"] == 0:
             excluded_reasons["no_winners"] += 1
             continue

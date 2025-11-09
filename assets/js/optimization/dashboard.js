@@ -16,6 +16,7 @@ const formatPercent = (value) => {
 };
 
 const REASON_LABELS = {
+  executive_election: "首長選挙",
   no_winners: "当選者なし",
   missing_winner_votes: "当選者の得票欠損",
   invalid_min_vote: "最低得票の算出不可",
@@ -104,7 +105,7 @@ function renderSummaryBoard(parties, limit = 10) {
   });
 }
 
-function renderPartyTable(parties) {
+function renderPartyTable(parties, limit = 10) {
   const tbody = document.getElementById("optimization-party-table-body");
   if (!tbody) return;
   tbody.innerHTML = "";
@@ -119,7 +120,11 @@ function renderPartyTable(parties) {
     return;
   }
 
-  parties.forEach((party) => {
+  const sorted = [...parties].sort(
+    (a, b) => (b.potentialWinners ?? 0) - (a.potentialWinners ?? 0),
+  );
+
+  sorted.slice(0, limit).forEach((party) => {
     const potential = party.potentialWinners ?? 0;
     const actual = party.actualWinners ?? 0;
     const efficiency = potential > 0 ? actual / potential : null;
@@ -197,18 +202,34 @@ function initPartyComparisonChart(parties, limit = 10) {
         valueFormatter: (value) => `${formatNumber(Number(value))} 議席`,
       },
       legend: { top: 0 },
-      grid: { top: 56, left: 80, right: 24, bottom: 32 },
+      grid: { top: 56, left: 48, right: 16, bottom: 64 },
       xAxis: {
+        type: "category",
+        data: categories,
+        axisLabel: {
+          fontSize: 12,
+          interval: 0,
+          rotate: 0,
+          formatter: (value) => {
+            const maxChars = 6;
+            if (typeof value !== "string" || value.length <= maxChars) {
+              return value;
+            }
+            const chunks = [];
+            for (let i = 0; i < value.length; i += maxChars) {
+              chunks.push(value.slice(i, i + maxChars));
+            }
+            return chunks.join("\n");
+          },
+        },
+      },
+      yAxis: {
         type: "value",
         axisLabel: {
           formatter: (value) => Number(value).toLocaleString("ja-JP"),
         },
         splitLine: { show: true, lineStyle: { color: "#e2e8f0" } },
-      },
-      yAxis: {
-        type: "category",
-        data: categories,
-        axisLabel: { fontSize: 12 },
+        minInterval: 1,
       },
       series: hasData
         ? [
