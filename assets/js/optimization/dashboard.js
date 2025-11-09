@@ -63,6 +63,7 @@ function renderSummaryBoard(parties, limit = 10) {
 
   if (!Array.isArray(parties) || parties.length === 0) {
     const note = document.createElement("p");
+    note.className = "summary-board-meta";
     note.textContent = "対象となる政党がありません。";
     container.appendChild(note);
     return;
@@ -76,18 +77,30 @@ function renderSummaryBoard(parties, limit = 10) {
   items.forEach((party) => {
     const potential = party.potentialWinners ?? 0;
     const actual = party.actualWinners ?? 0;
+    const gap = Math.max(potential - actual, 0);
+    const partyName = party.party || "不明";
 
-    const item = document.createElement("div");
-    item.className = "summary-board-item";
+    const card = document.createElement("article");
+    card.className = "summary-board-card";
 
-    const label = document.createElement("strong");
-    label.textContent = party.party;
+    const highlight = document.createElement("div");
+    highlight.className = "summary-board-highlight";
 
-    const text = document.createElement("span");
-    text.textContent = `理論最大 ${formatNumber(potential)} / 実際 ${formatNumber(actual)} 議席`;
+    const title = document.createElement("h3");
+    title.textContent = partyName;
 
-    item.append(label, text);
-    container.appendChild(item);
+    const gapRow = document.createElement("div");
+    gapRow.className = "summary-board-gap";
+    gapRow.innerHTML = `${formatNumber(gap)}<span>議席差</span>`;
+
+    highlight.append(title, gapRow);
+
+    const meta = document.createElement("p");
+    meta.className = "summary-board-meta";
+    meta.textContent = `理論最大 ${formatNumber(potential)} / 実際 ${formatNumber(actual)} 議席`;
+
+    card.append(highlight, meta);
+    container.appendChild(card);
   });
 }
 
