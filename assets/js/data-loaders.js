@@ -241,7 +241,7 @@ export async function loadVoteOptimizationDataset() {
   const parties = Array.isArray(payload?.parties)
     ? payload.parties
         .map((entry) => ({
-          party: normaliseString(entry.party),
+          party: ensurePartyName(entry.party),
           elections: toInteger(entry.elections) ?? 0,
           totalVotes: toInteger(entry.total_votes) ?? 0,
           candidates: toInteger(entry.candidates) ?? 0,
@@ -258,7 +258,7 @@ export async function loadVoteOptimizationDataset() {
           const partyResults = Array.isArray(entry.party_results)
             ? entry.party_results
                 .map((result) => ({
-                  party: normaliseString(result.party),
+                  party: ensurePartyName(result.party),
                   candidates: toInteger(result.candidates) ?? 0,
                   totalVotes: toInteger(result.total_votes) ?? 0,
                   actualWinners: toInteger(result.actual_winners) ?? 0,

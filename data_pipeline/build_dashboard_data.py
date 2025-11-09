@@ -67,7 +67,13 @@ def normalise_string(value: Any) -> str:
 
 def ensure_party_name(value: Any) -> str:
     text = normalise_string(value)
-    if not text or text == "-" or "無所属" in text:
+    lower = text.lower()
+    if (
+        not text
+        or text == "-"
+        or "無所属" in text
+        or lower in {"nan", "na", "なし", "none"}
+    ):
         return "無所属"
     return text
 
