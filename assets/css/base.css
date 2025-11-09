@@ -229,6 +229,53 @@
         color: var(--text-muted);
       }
 
+      .optimization-chart {
+        min-height: 360px;
+        margin-bottom: 16px;
+      }
+
+      .optimization-search-form {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 12px;
+        margin-bottom: 16px;
+      }
+
+      .optimization-search-group {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .optimization-search-group label {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text-muted);
+      }
+
+      .optimization-search-group input,
+      .optimization-search-group select {
+        font: inherit;
+        padding: 10px 12px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        background: #fff;
+      }
+
+      .optimization-search-group input:focus,
+      .optimization-search-group select:focus {
+        outline: none;
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+      }
+
+      .optimization-search-actions {
+        display: flex;
+        align-items: flex-end;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
       .party-metric-grid {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));

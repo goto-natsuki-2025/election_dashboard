@@ -178,15 +178,205 @@ function renderElectionTable(elections) {
   });
 }
 
+function renderPartyComparisonChart(parties, limit = 10) {
+  const container = document.getElementById("optimization-election-chart");
+  if (!container) return null;
+  if (!Array.isArray(parties) || parties.length === 0) {
+    container.textContent = "チャートを描画するデータがありません。";
+    return null;
+  }
+  const topParties = [...parties]
+    .sort((a, b) => (b.potentialWinners ?? 0) - (a.potentialWinners ?? 0))
+    .slice(0, limit);
+  const categories = topParties.map((party) => party.party || "不明");
+  const potentials = topParties.map((party) => party.potentialWinners ?? 0);
+  const actuals = topParties.map((party) => party.actualWinners ?? 0);
+  const chart = echarts.init(container, undefined, { renderer: "svg" });
+  chart.setOption({
+    tooltip: {
+      trigger: "axis",
+      axisPointer: { type: "shadow" },
+      valueFormatter: (value) => `${formatNumber(Number(value))} 議席`,
+    },
+    legend: {
+      top: 0,
+    },
+    grid: { top: 48, left: 80, right: 24, bottom: 32 },
+    xAxis: {
+      type: "value",
+      axisLabel: {
+        formatter: (value) => Number(value).toLocaleString("ja-JP"),
+      },
+      splitLine: { show: true, lineStyle: { color: "#e2e8f0" } },
+    },
+    yAxis: {
+      type: "category",
+      data: categories,
+      axisLabel: { fontSize: 12 },
+    },
+    series: [
+      {
+        name: "理論最大",
+        type: "bar",
+        data: potentials,
+        itemStyle: { color: "#cbd5f5" },
+      },
+      {
+        name: "実際",
+        type: "bar",
+        data: actuals,
+        itemStyle: { color: "#2563eb" },
+      },
+    ],
+  });
+  return chart;
+}
+
+function populatePartySelect(parties) {
+  const select = document.getElementById("optimization-search-party");
+  if (!select) return;
+  select.innerHTML = "";
+  const defaultOption = document.createElement("option");
+  defaultOption.value = "";
+  defaultOption.textContent = "すべて";
+  select.appendChild(defaultOption);
+  const partyNames = Array.from(
+    new Set(
+      parties
+        .map((party) => party.party)
+        .filter((name) => typeof name === "string" && name.trim().length > 0),
+    ),
+  ).sort((a, b) => a.localeCompare(b, "ja"));
+  partyNames.forEach((name) => {
+    const option = document.createElement("option");
+    option.value = name;
+    option.textContent = name;
+    select.appendChild(option);
+  });
+}
+
+function filterElectionResults(elections, { keyword, party, minGap }) {
+  if (!Array.isArray(elections)) {
+    return [];
+  }
+  const rows = [];
+  const keywordText = keyword?.trim().toLowerCase() ?? "";
+  const minGapValue = Number.isFinite(minGap) && minGap > 0 ? minGap : 0;
+  elections.forEach((entry) => {
+    const electionName = entry.electionKey || "";
+    if (keywordText && !electionName.toLowerCase().includes(keywordText)) {
+      return;
+    }
+    const dateLabel = formatDate(entry.electionDate);
+    const partyResults = Array.isArray(entry.partyResults) ? entry.partyResults : [];
+    partyResults.forEach((result) => {
+      const partyName = result.party || "不明";
+      if (party && partyName !== party) {
+        return;
+      }
+      const potential = result.potentialWinners ?? 0;
+      const actual = result.actualWinners ?? 0;
+      const gap = Math.max(result.gap ?? potential - actual, 0);
+      if (gap < minGapValue) {
+        return;
+      }
+      rows.push({
+        electionKey: entry.electionKey,
+        electionDate: dateLabel,
+        party: partyName,
+        potential,
+        actual,
+        gap,
+      });
+    });
+  });
+  rows.sort((a, b) => b.gap - a.gap);
+  return rows;
+}
+
+function renderSearchResults(rows, limit = 50) {
+  const tbody = document.getElementById("optimization-search-results");
+  if (!tbody) return;
+  tbody.innerHTML = "";
+  const sliced = rows.slice(0, limit);
+  if (sliced.length === 0) {
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = 6;
+    cell.textContent = "条件に一致する選挙がありません。";
+    row.appendChild(cell);
+    tbody.appendChild(row);
+    return;
+  }
+  sliced.forEach((item) => {
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td>${item.electionKey}</td>
+      <td>${item.electionDate}</td>
+      <td>${item.party}</td>
+      <td class="numeric">${formatNumber(item.potential)}</td>
+      <td class="numeric">${formatNumber(item.actual)}</td>
+      <td class="numeric highlight">${formatNumber(item.gap)}</td>
+    `;
+    tbody.appendChild(row);
+  });
+}
+
+function setupElectionSearch(elections, parties) {
+  populatePartySelect(parties);
+  const form = document.getElementById("optimization-search-form");
+  const keywordInput = document.getElementById("optimization-search-keyword");
+  const partySelect = document.getElementById("optimization-search-party");
+  const minGapInput = document.getElementById("optimization-search-min-gap");
+  const resetButton = document.getElementById("optimization-search-reset");
+  if (!form || !keywordInput || !partySelect || !minGapInput || !resetButton) {
+    return;
+  }
+
+  const state = {
+    keyword: "",
+    party: "",
+    minGap: 0,
+  };
+
+  const update = () => {
+    const rows = filterElectionResults(elections, state);
+    renderSearchResults(rows);
+  };
+
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    state.keyword = keywordInput.value;
+    state.party = partySelect.value;
+    const parsed = Number(minGapInput.value);
+    state.minGap = Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+    update();
+  });
+
+  resetButton.addEventListener("click", () => {
+    keywordInput.value = "";
+    partySelect.value = "";
+    minGapInput.value = "";
+    state.keyword = "";
+    state.party = "";
+    state.minGap = 0;
+    update();
+  });
+
+  update();
+}
+
 export async function initVoteOptimizationDashboard() {
   const data = await loadVoteOptimizationDataset();
   renderSummary(data.summary);
   renderSummaryBoard(data.parties);
+  const chart = renderPartyComparisonChart(data.parties);
+  setupElectionSearch(data.elections, data.parties);
   renderPartyTable(data.parties);
   renderElectionTable(data.elections);
   return {
     resize() {
-      // no charts in this view yet
+      chart?.resize?.();
     },
   };
 }
