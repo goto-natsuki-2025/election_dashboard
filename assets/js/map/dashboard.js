@@ -2,6 +2,9 @@ import { PREFECTURES, PREFECTURE_NAME_BY_CODE, TERM_YEARS } from "../constants.j
 import { fetchGzipJson, isWinningOutcome, normaliseString } from "../utils.js";
 const PREFECTURE_TOPO_PATH = "assets/data/japan.topojson.gz";
 const MUNICIPAL_TOPO_PATH = "assets/data/municipal.topojson.gz";
+const SHIZUOKA_LEGACY_TOPO_PATH = "assets/data/shizuoka.topojson.gz";
+const MUNICIPAL_LEGACY_THRESHOLD_YEAR = 2024;
+const SHIZUOKA_PREF_CODE = "22";
 const COLOR_PALETTE = [
   "#f8fafc",
   "#e2f3ff",
@@ -444,6 +447,49 @@ async function prepareMunicipalityFeatures(rawTopoJson, preferredObjectName = nu
   return { features, patternIndex, featureMap, objectName };
 }
 
+function rebuildMunicipalityResource(template, features, key = "default") {
+  if (!template || !Array.isArray(features)) {
+    return null;
+  }
+  const patternIndex = buildMunicipalityPatternIndex(features);
+  const featureMap = new Map(
+    features
+      .filter((feature) => normaliseString(feature.properties?.municipality_code))
+      .map((feature) => [normaliseString(feature.properties.municipality_code), feature]),
+  );
+  return {
+    ...template,
+    features,
+    patternIndex,
+    featureMap,
+    key,
+  };
+}
+
+function buildLegacyMunicipalResource(baseResource, overrideResource, prefCode, key = "legacy") {
+  if (
+    !baseResource ||
+    !overrideResource ||
+    !Array.isArray(baseResource.features) ||
+    !Array.isArray(overrideResource.features)
+  ) {
+    return null;
+  }
+  const normalizedPrefCode = normaliseString(prefCode);
+  if (!normalizedPrefCode) return null;
+  const overrideFeatures = overrideResource.features.filter(
+    (feature) => normaliseString(feature.properties?.pref_code) === normalizedPrefCode,
+  );
+  if (overrideFeatures.length === 0) {
+    return null;
+  }
+  const remainingBaseFeatures = baseResource.features.filter(
+    (feature) => normaliseString(feature.properties?.pref_code) !== normalizedPrefCode,
+  );
+  const mergedFeatures = [...remainingBaseFeatures, ...overrideFeatures];
+  return rebuildMunicipalityResource(baseResource, mergedFeatures, key);
+}
+
 async function preparePrefectureFeatures(rawTopoJson, preferredObjectName = null) {
   const topojson = await ensureTopojsonClient();
   const { name: objectName, object } = resolveTopoGeometryCollection(
@@ -557,6 +603,28 @@ function resolveMunicipalityCode(prefectureCode, municipalityKey, index) {
 async function loadMunicipalResources() {
   const rawTopo = await fetchGzipJson(MUNICIPAL_TOPO_PATH);
   return prepareMunicipalityFeatures(rawTopo);
+}
+
+async function loadMunicipalResourceSets() {
+  const baseResources = await loadMunicipalResources();
+  const latest = baseResources ? { ...baseResources, key: "latest" } : null;
+  if (!latest) {
+    return { latest: null, legacy: null };
+  }
+  let legacy = null;
+  try {
+    const rawShizuoka = await fetchGzipJson(SHIZUOKA_LEGACY_TOPO_PATH);
+    const shizuokaLegacy = await prepareMunicipalityFeatures(rawShizuoka);
+    legacy =
+      buildLegacyMunicipalResource(latest, shizuokaLegacy, SHIZUOKA_PREF_CODE, "legacy-shizuoka") ??
+      null;
+  } catch (error) {
+    console.warn("Failed to load legacy municipal geometry for Shizuoka:", error);
+  }
+  return {
+    latest,
+    legacy,
+  };
 }
 
 async function loadPrefectureResources() {
@@ -1225,27 +1293,40 @@ export async function initPartyMapDashboard({ candidates }) {
     console.error(error);
     return null;
   });
-  const municipalResourcesPromise = loadMunicipalResources().catch((error) => {
+  const municipalResourcesPromise = loadMunicipalResourceSets().catch((error) => {
     console.error(error);
     return null;
   });
   const municipalContainer = aggregation.byCouncilType?.[COUNCIL_TYPES.MUNICIPAL];
   const municipalYearCache = new Map();
+  const municipalGeometryCache = new Map();
   let prefectureResources = null;
-  let municipalResources = null;
+  let municipalResourceSets = null;
+  let municipalResourceResolver = () => null;
+
+  const getMunicipalResourceForYear = (year) => {
+    try {
+      return municipalResourceResolver(year);
+    } catch (error) {
+      console.error(error);
+      return null;
+    }
+  };
 
   const resolveMunicipalYearData = (year) => {
-    if (municipalYearCache.has(year)) {
-      return municipalYearCache.get(year);
+    const resource = getMunicipalResourceForYear(year);
+    const cacheKey = `${resource?.key ?? "default"}::${year}`;
+    if (municipalYearCache.has(cacheKey)) {
+      return municipalYearCache.get(cacheKey);
     }
     const emptyResult = { totals: new Map(), partySeats: new Map() };
-    if (!municipalContainer || !municipalResources) {
-      municipalYearCache.set(year, emptyResult);
+    if (!municipalContainer || !resource) {
+      municipalYearCache.set(cacheKey, emptyResult);
       return emptyResult;
     }
     const rawYear = municipalContainer.municipalitiesByYear?.get?.(year);
     if (!(rawYear instanceof Map)) {
-      municipalYearCache.set(year, emptyResult);
+      municipalYearCache.set(cacheKey, emptyResult);
       return emptyResult;
     }
     const totals = new Map();
@@ -1255,7 +1336,7 @@ export async function initPartyMapDashboard({ candidates }) {
       const codeRaw = resolveMunicipalityCode(
         normaliseString(entry.prefectureCode ?? ""),
         municipalityKey,
-        municipalResources.patternIndex,
+        resource.patternIndex,
       );
       const code = normaliseString(codeRaw);
       if (!code) return;
@@ -1277,8 +1358,40 @@ export async function initPartyMapDashboard({ candidates }) {
       }
     });
     const result = { totals, partySeats };
-    municipalYearCache.set(year, result);
+    municipalYearCache.set(cacheKey, result);
     return result;
+  };
+
+  const getMunicipalGeometry = (year) => {
+    const resource = getMunicipalResourceForYear(year);
+    if (!resource || !Array.isArray(resource.features)) {
+      return null;
+    }
+    const cacheKey = resource.key ?? "default";
+    if (!municipalGeometryCache.has(cacheKey)) {
+      const featureMap =
+        resource.featureMap instanceof Map
+          ? resource.featureMap
+          : new Map(
+              resource.features
+                .filter((feature) => normaliseString(feature.properties?.municipality_code))
+                .map((feature) => [normaliseString(feature.properties.municipality_code), feature]),
+            );
+      const nameResolver = (code) => {
+        const normalized = normaliseString(code);
+        return (
+          featureMap.get(normalized)?.properties?.region_name ??
+          featureMap.get(code)?.properties?.region_name ??
+          code
+        );
+      };
+      municipalGeometryCache.set(cacheKey, {
+        features: resource.features,
+        featureMap,
+        nameResolver,
+      });
+    }
+    return municipalGeometryCache.get(cacheKey);
   };
 
   const scopeOrder = [
@@ -1364,11 +1477,24 @@ export async function initPartyMapDashboard({ candidates }) {
   }
 
   try {
-    municipalResources = await municipalResourcesPromise;
+    municipalResourceSets = await municipalResourcesPromise;
   } catch (error) {
     console.error(error);
-    municipalResources = null;
+    municipalResourceSets = null;
   }
+  if (!municipalResourceSets) {
+    municipalResourceSets = { latest: null, legacy: null };
+  }
+  municipalResourceResolver = (year) => {
+    if (!municipalResourceSets) return null;
+    const numericYear = Number(year);
+    const prefersLegacy =
+      Number.isFinite(numericYear) && numericYear > 0 && numericYear < MUNICIPAL_LEGACY_THRESHOLD_YEAR;
+    if (prefersLegacy && municipalResourceSets.legacy) {
+      return municipalResourceSets.legacy;
+    }
+    return municipalResourceSets.latest ?? municipalResourceSets.legacy ?? null;
+  };
 
   const prefectureFeatures = prefectureResources.features;
   const prefectureFeatureMap =
@@ -1396,23 +1522,14 @@ export async function initPartyMapDashboard({ candidates }) {
     },
   };
 
-  if (municipalResources && Array.isArray(municipalResources.features)) {
-    const municipalNameResolver = (code) => {
-      const normalized = normaliseString(code);
-      return (
-        municipalResources.featureMap.get(normalized)?.properties?.region_name ??
-        municipalResources.featureMap.get(code)?.properties?.region_name ??
-        code
-      );
-    };
-    geometryByMode[COUNCIL_TYPES.MUNICIPAL] = {
-      features: municipalResources.features,
-      featureMap: municipalResources.featureMap,
-      nameResolver: municipalNameResolver,
-    };
+  const defaultMunicipalGeometry = getMunicipalGeometry(sliderDefaultYear);
+  if (defaultMunicipalGeometry) {
+    geometryByMode[COUNCIL_TYPES.MUNICIPAL] = defaultMunicipalGeometry;
   } else {
     geometryByMode[COUNCIL_TYPES.MUNICIPAL] = geometryByMode[COUNCIL_TYPES.COMBINED];
   }
+
+  const hasMunicipalGeometry = Boolean(defaultMunicipalGeometry);
 
   const scopeOptions = scopeOrder.map((value) => ({
     value,
@@ -1420,7 +1537,7 @@ export async function initPartyMapDashboard({ candidates }) {
     available:
       hasSeatsForContainer(aggregation.byCouncilType?.[value]) &&
       (value !== COUNCIL_TYPES.MUNICIPAL ||
-        (municipalResources && Array.isArray(municipalResources.features))),
+        hasMunicipalGeometry),
   }));
 
   const metricInputs = Array.from(root.querySelectorAll('input[name="choropleth-metric"]'));
@@ -1470,14 +1587,18 @@ export async function initPartyMapDashboard({ candidates }) {
 
   state.year = prepareYearSelect(yearSelect, sliderYears, sliderDefaultYear, yearDisplay);
 
-  const getGeometryForMode = (mode) =>
-    geometryByMode[mode] ?? geometryByMode[COUNCIL_TYPES.COMBINED];
+  const getGeometryForMode = (mode, year = state?.year ?? sliderDefaultYear) => {
+    if (mode === COUNCIL_TYPES.MUNICIPAL) {
+      return getMunicipalGeometry(year) ?? geometryByMode[COUNCIL_TYPES.COMBINED];
+    }
+    return geometryByMode[mode] ?? geometryByMode[COUNCIL_TYPES.COMBINED];
+  };
 
   const partiesForYear = getPartiesFor(state.mode, state.year);
   state.party = preparePartySelect(partySelect, partiesForYear, partiesForYear[0]?.party ?? "");
 
   const scopeMeta = getScopeMeta(state.mode);
-  const geometryForMode = getGeometryForMode(state.mode);
+  const geometryForMode = getGeometryForMode(state.mode, state.year);
   const initialMetrics = getMetricsFor(state.mode, state.year, state.party);
   const initialTotals = getTotalsFor(state.mode, state.year);
   const initialData = buildFeatureCollection(geometryForMode.features, initialMetrics, initialTotals);
@@ -1579,7 +1700,7 @@ export async function initPartyMapDashboard({ candidates }) {
     const metricType = normalizeMetric(metric);
     const metricMeta = getMetricMeta(metricType);
     const scope = getScopeMeta(mode);
-    const geometry = getGeometryForMode(mode);
+    const geometry = getGeometryForMode(mode, year);
     const metrics = getMetricsFor(mode, year, party);
     const totals = getTotalsFor(mode, year);
     const source = map.getSource("regions");
