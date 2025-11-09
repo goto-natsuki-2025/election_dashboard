@@ -422,7 +422,24 @@
           <p class="description">
             選挙ごとに理論最大と実際の当選数を比較できます。上位のグラフで党別の差分を確認し、下部の検索で個別選挙を探してください。
           </p>
-          <div id="optimization-election-chart" class="chart optimization-chart" aria-label="党別理論最大と実際の当選数"></div>
+          <div class="optimization-analysis-grid">
+            <div id="optimization-election-chart" class="chart optimization-chart" aria-label="党別理論最大と実際の当選数"></div>
+            <div class="search-table-wrapper optimization-detail-table">
+              <p id="optimization-min-vote-note" class="optimization-note"></p>
+              <table class="search-table">
+                <thead>
+                  <tr>
+                    <th scope="col">党派</th>
+                    <th scope="col">実数</th>
+                    <th scope="col">総得票数</th>
+                    <th scope="col">総得票数 / 最低得票</th>
+                    <th scope="col">理論最大</th>
+                  </tr>
+                </thead>
+                <tbody id="optimization-election-detail"></tbody>
+              </table>
+            </div>
+          </div>
           <form id="optimization-search-form" class="optimization-search-form" aria-label="選挙検索" novalidate>
             <div class="optimization-search-group">
               <label for="optimization-search-keyword">選挙名</label>

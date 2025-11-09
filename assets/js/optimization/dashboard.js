@@ -193,7 +193,8 @@ function initPartyComparisonChart(parties, limit = 10) {
     chart.setOption({
       title: {
         text: title,
-        left: 0,
+        left: "center",
+        top: 0,
         textStyle: { fontSize: 16, fontWeight: 600, color: "#0f172a" },
       },
       tooltip: {
@@ -201,15 +202,23 @@ function initPartyComparisonChart(parties, limit = 10) {
         axisPointer: { type: "shadow" },
         valueFormatter: (value) => `${formatNumber(Number(value))} 議席`,
       },
-      legend: { top: 0 },
-      grid: { top: 56, left: 48, right: 16, bottom: 64 },
+      legend: { top: 36 },
+      grid: { top: 86, left: 92, right: 16, bottom: 24 },
       xAxis: {
+        type: "value",
+        axisLabel: {
+          formatter: (value) => Number(value).toLocaleString("ja-JP"),
+        },
+        splitLine: { show: true, lineStyle: { color: "#e2e8f0" } },
+        minInterval: 1,
+      },
+      yAxis: {
         type: "category",
         data: categories,
+        inverse: true,
         axisLabel: {
           fontSize: 12,
-          interval: 0,
-          rotate: 0,
+          margin: 16,
           formatter: (value) => {
             const maxChars = 6;
             if (typeof value !== "string" || value.length <= maxChars) {
@@ -223,14 +232,6 @@ function initPartyComparisonChart(parties, limit = 10) {
           },
         },
       },
-      yAxis: {
-        type: "value",
-        axisLabel: {
-          formatter: (value) => Number(value).toLocaleString("ja-JP"),
-        },
-        splitLine: { show: true, lineStyle: { color: "#e2e8f0" } },
-        minInterval: 1,
-      },
       series: hasData
         ? [
             {
@@ -238,12 +239,18 @@ function initPartyComparisonChart(parties, limit = 10) {
               type: "bar",
               data: potentials,
               itemStyle: { color: "#cbd5f5" },
+              barGap: "-100%",
+              barCategoryGap: "110%",
+              barWidth: 18,
             },
             {
               name: "実際",
               type: "bar",
               data: actuals,
               itemStyle: { color: "#2563eb" },
+              barGap: "-100%",
+              barCategoryGap: "110%",
+              barWidth: 18,
             },
           ]
         : [],
@@ -265,6 +272,7 @@ function initPartyComparisonChart(parties, limit = 10) {
   const showOverall = () => {
     if (!Array.isArray(parties) || parties.length === 0) {
       applyOption("党別理論最大と実際（全体）", [], [], []);
+      renderElectionDetailTable(null);
       return;
     }
     const topParties = [...parties]
@@ -274,6 +282,7 @@ function initPartyComparisonChart(parties, limit = 10) {
     const potentials = topParties.map((party) => party.potentialWinners ?? 0);
     const actuals = topParties.map((party) => party.actualWinners ?? 0);
     applyOption("党別理論最大と実際（全体）", categories, potentials, actuals);
+    renderElectionDetailTable(null);
   };
 
   const showElection = (election) => {
@@ -298,6 +307,7 @@ function initPartyComparisonChart(parties, limit = 10) {
       ? `${election.electionKey}（${titleDate}）`
       : `${election.electionKey}`;
     applyOption(title, categories, potentials, actuals);
+    renderElectionDetailTable(election);
   };
 
   showOverall();
@@ -473,4 +483,42 @@ export async function initVoteOptimizationDashboard() {
       chartController?.resize?.();
     },
   };
+}
+function renderElectionDetailTable(election) {
+  const tbody = document.getElementById("optimization-election-detail");
+  const minNote = document.getElementById("optimization-min-vote-note");
+  if (minNote) {
+    const minVote = election?.minWinningVote ?? null;
+    minNote.textContent = minVote
+      ? `最低当選得票数: ${formatNumber(minVote)}`
+      : "最低当選得票数: -";
+  }
+  if (!tbody) return;
+  tbody.innerHTML = "";
+  if (!election || !Array.isArray(election.partyResults) || election.partyResults.length === 0) {
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = 6;
+    cell.textContent = "選択した選挙の党別データがありません。";
+    row.appendChild(cell);
+    tbody.appendChild(row);
+    return;
+  }
+  const minVote = election.minWinningVote ?? null;
+  election.partyResults
+    .slice()
+    .sort((a, b) => (b.potentialWinners ?? 0) - (a.potentialWinners ?? 0))
+    .forEach((result) => {
+      const totalVotes = result.totalVotes ?? 0;
+      const ratio = minVote && minVote > 0 ? totalVotes / minVote : null;
+      const row = document.createElement("tr");
+      row.innerHTML = `
+        <td>${result.party || "不明"}</td>
+        <td class="numeric">${formatNumber(result.actualWinners ?? 0)}</td>
+        <td class="numeric">${formatNumber(totalVotes)}</td>
+        <td class="numeric">${ratio === null ? "-" : ratio.toFixed(2)}</td>
+        <td class="numeric">${formatNumber(result.potentialWinners ?? 0)}</td>
+      `;
+      tbody.appendChild(row);
+    });
 }
