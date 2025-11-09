@@ -56,6 +56,41 @@ function renderSummary(summary) {
   }
 }
 
+function renderSummaryBoard(parties, limit = 10) {
+  const container = document.getElementById("optimization-summary-board");
+  if (!container) return;
+  container.innerHTML = "";
+
+  if (!Array.isArray(parties) || parties.length === 0) {
+    const note = document.createElement("p");
+    note.textContent = "対象となる政党がありません。";
+    container.appendChild(note);
+    return;
+  }
+
+  const sorted = [...parties].sort(
+    (a, b) => (b.potentialWinners ?? 0) - (a.potentialWinners ?? 0),
+  );
+  const items = limit > 0 ? sorted.slice(0, limit) : sorted;
+
+  items.forEach((party) => {
+    const potential = party.potentialWinners ?? 0;
+    const actual = party.actualWinners ?? 0;
+
+    const item = document.createElement("div");
+    item.className = "summary-board-item";
+
+    const label = document.createElement("strong");
+    label.textContent = party.party;
+
+    const text = document.createElement("span");
+    text.textContent = `理論最大 ${formatNumber(potential)} / 実際 ${formatNumber(actual)} 議席`;
+
+    item.append(label, text);
+    container.appendChild(item);
+  });
+}
+
 function renderPartyTable(parties) {
   const tbody = document.getElementById("optimization-party-table-body");
   if (!tbody) return;
@@ -133,6 +168,7 @@ function renderElectionTable(elections) {
 export async function initVoteOptimizationDashboard() {
   const data = await loadVoteOptimizationDataset();
   renderSummary(data.summary);
+  renderSummaryBoard(data.parties);
   renderPartyTable(data.parties);
   renderElectionTable(data.elections);
   return {
