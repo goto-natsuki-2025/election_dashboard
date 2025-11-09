@@ -42,6 +42,7 @@ ELECTION_OUTPUT_PATH = DATA_DIR / "election_summary.json.gz"
 COMPENSATION_OUTPUT_PATH = DATA_DIR / "compensation.json.gz"
 TOP_DASHBOARD_OUTPUT_PATH = DATA_DIR / "top_dashboard.json.gz"
 WIN_RATE_OUTPUT_PATH = DATA_DIR / "win_rate.json.gz"
+VOTE_OPTIMIZATION_OUTPUT_PATH = DATA_DIR / "vote_optimization.json.gz"
 
 PARTY_FOUNDATION_DATES = {
     "自由民主党": datetime(1955, 11, 15),
@@ -59,6 +60,7 @@ PARTY_FOUNDATION_DATES = {
 
 SOURCE_PATTERN = re.compile(r"^(.*)_(\d{8})$")
 
+EXECUTIVE_KEYWORDS = ["市長", "町長", "村長", "区長", "知事"]
 
 def normalise_string(value: Any) -> str:
     return "" if value is None else str(value).strip()
@@ -66,7 +68,13 @@ def normalise_string(value: Any) -> str:
 
 def ensure_party_name(value: Any) -> str:
     text = normalise_string(value)
-    if not text or text == "-" or "無所属" in text:
+    lower = text.lower()
+    if (
+        not text
+        or text == "-"
+        or "無所属" in text
+        or lower in {"nan", "na", "なし", "none"}
+    ):
         return "無所属"
     return text
 
@@ -631,6 +639,182 @@ def build_win_rate_dataset(
     }
 
 
+def build_vote_optimization_dataset(candidates: List[Dict[str, Any]]) -> Dict[str, Any]:
+    elections: Dict[str, Dict[str, Any]] = {}
+
+    for candidate in candidates:
+        election_key = normalise_string(candidate.get("source_key")) or normalise_string(
+            candidate.get("source_file")
+        )
+        if not election_key:
+            continue
+        election_date = parse_iso_datetime(candidate.get("election_date"))
+        if not election_date:
+            continue
+        election_id = f"{election_key}|{election_date.date().isoformat()}"
+        entry = elections.get(election_id)
+        if entry is None:
+            entry = {
+                "election_key": election_key,
+                "election_date": election_date,
+                "total_candidates": 0,
+                "winner_count": 0,
+                "min_win_vote": None,
+                "missing_winner_votes": False,
+                "total_votes": 0,
+                "parties": defaultdict(
+                    lambda: {"total_votes": 0, "actual_winners": 0, "candidates": 0}
+                ),
+            }
+            elections[election_id] = entry
+
+        votes = candidate.get("votes")
+        party = ensure_party_name(candidate.get("party"))
+        is_winner = is_winning_outcome(candidate.get("outcome"))
+
+        entry["total_candidates"] += 1
+        if votes is not None and isinstance(votes, (int, float)):
+            entry["total_votes"] += int(votes)
+
+        party_bucket = entry["parties"][party]
+        party_bucket["candidates"] += 1
+        if isinstance(votes, (int, float)):
+            party_bucket["total_votes"] += int(votes)
+
+        if is_winner:
+            entry["winner_count"] += 1
+            if not isinstance(votes, (int, float)):
+                entry["missing_winner_votes"] = True
+            else:
+                vote_value = int(votes)
+                current_min = entry["min_win_vote"]
+                entry["min_win_vote"] = vote_value if current_min is None else min(current_min, vote_value)
+                party_bucket["actual_winners"] += 1
+
+    included_elections: List[Dict[str, Any]] = []
+    excluded_reasons = {
+        "executive_election": 0,
+        "no_winners": 0,
+        "missing_winner_votes": 0,
+        "invalid_min_vote": 0,
+        "no_party_data": 0,
+    }
+    party_totals: Dict[str, Dict[str, int]] = defaultdict(
+        lambda: {
+            "elections": 0,
+            "total_votes": 0,
+            "candidates": 0,
+            "actual_winners": 0,
+            "potential_winners": 0,
+        }
+    )
+
+    min_date: Optional[datetime] = None
+    max_date: Optional[datetime] = None
+
+    def is_executive_election(name: str) -> bool:
+        return any(keyword in name for keyword in EXECUTIVE_KEYWORDS)
+
+    for entry in elections.values():
+        election_name = entry.get("election_key", "")
+        if election_name and is_executive_election(election_name):
+            excluded_reasons["executive_election"] += 1
+            continue
+        if entry["winner_count"] == 0:
+            excluded_reasons["no_winners"] += 1
+            continue
+        if entry["missing_winner_votes"]:
+            excluded_reasons["missing_winner_votes"] += 1
+            continue
+        min_win_vote = entry["min_win_vote"]
+        if not isinstance(min_win_vote, (int, float)) or min_win_vote <= 0:
+            excluded_reasons["invalid_min_vote"] += 1
+            continue
+
+        party_results: List[Dict[str, Any]] = []
+        total_gap = 0
+        for party, stats in entry["parties"].items():
+            total_votes = int(stats["total_votes"])
+            if total_votes <= 0:
+                continue
+            potential_winners = int(total_votes // min_win_vote)
+            actual_winners = int(stats["actual_winners"])
+            gap = int(potential_winners - actual_winners)
+            total_gap += max(gap, 0)
+
+            result = {
+                "party": party,
+                "total_votes": total_votes,
+                "candidates": int(stats["candidates"]),
+                "actual_winners": actual_winners,
+                "potential_winners": potential_winners,
+                "gap": gap,
+            }
+            party_results.append(result)
+
+            totals = party_totals[party]
+            totals["elections"] += 1
+            totals["total_votes"] += total_votes
+            totals["candidates"] += int(stats["candidates"])
+            totals["actual_winners"] += actual_winners
+            totals["potential_winners"] += potential_winners
+
+        if not party_results:
+            excluded_reasons["no_party_data"] += 1
+            continue
+
+        party_results.sort(key=lambda item: (item["gap"], item["potential_winners"]), reverse=True)
+
+        election_payload = {
+            "election_key": entry["election_key"],
+            "election_date": entry["election_date"].date().isoformat(),
+            "min_winning_vote": int(min_win_vote),
+            "total_candidates": int(entry["total_candidates"]),
+            "winner_count": int(entry["winner_count"]),
+            "total_votes": int(entry["total_votes"]),
+            "total_gap": int(total_gap),
+            "party_results": party_results,
+        }
+        included_elections.append(election_payload)
+
+        if min_date is None or entry["election_date"] < min_date:
+            min_date = entry["election_date"]
+        if max_date is None or entry["election_date"] > max_date:
+            max_date = entry["election_date"]
+
+    party_summary = [
+        {
+            "party": party,
+            "elections": totals["elections"],
+            "total_votes": totals["total_votes"],
+            "candidates": totals["candidates"],
+            "actual_winners": totals["actual_winners"],
+            "potential_winners": totals["potential_winners"],
+            "gap": totals["potential_winners"] - totals["actual_winners"],
+        }
+        for party, totals in party_totals.items()
+        if totals["elections"] > 0
+    ]
+    party_summary.sort(key=lambda item: (item["gap"], item["potential_winners"]), reverse=True)
+
+    included_elections.sort(key=lambda item: item["election_date"], reverse=True)
+
+    summary_payload = {
+        "elections_analyzed": len(included_elections),
+        "excluded_elections": sum(excluded_reasons.values()),
+        "excluded_breakdown": excluded_reasons,
+        "min_date": min_date.isoformat() if min_date else None,
+        "max_date": max_date.isoformat() if max_date else None,
+    }
+
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "summary": summary_payload,
+        "parties": party_summary,
+        "elections": included_elections,
+    }
+
+
 def build_top_dashboard_payload(candidates: List[Dict[str, Any]]):
     events, municipality_count = build_election_events(candidates)
     timeline = build_party_timeline(events)
@@ -674,6 +858,7 @@ def main() -> None:
     compensation = build_party_compensation()
     top_dashboard = build_top_dashboard_payload(candidates)
     win_rate = build_win_rate_dataset(candidates, top_dashboard["timeline"].get("parties"))
+    vote_optimization = build_vote_optimization_dataset(candidates)
 
     # clean up compensation date fields to ISO strings for safety
     for row in compensation.get("rows", []):
@@ -695,6 +880,7 @@ def main() -> None:
         DATA_DIR / "election_summary.json",
         DATA_DIR / "compensation.json",
         DATA_DIR / "win_rate.json",
+        DATA_DIR / "vote_optimization.json",
     ]:
         if stale.exists():
             stale.unlink()
@@ -704,6 +890,7 @@ def main() -> None:
     write_json(COMPENSATION_OUTPUT_PATH, compensation)
     write_json(TOP_DASHBOARD_OUTPUT_PATH, top_dashboard)
     write_json(WIN_RATE_OUTPUT_PATH, win_rate)
+    write_json(VOTE_OPTIMIZATION_OUTPUT_PATH, vote_optimization)
     print(
         "Generated dashboard data:",
         ELECTION_OUTPUT_PATH.name,
@@ -711,6 +898,7 @@ def main() -> None:
         COMPENSATION_OUTPUT_PATH.name,
         TOP_DASHBOARD_OUTPUT_PATH.name,
         WIN_RATE_OUTPUT_PATH.name,
+        VOTE_OPTIMIZATION_OUTPUT_PATH.name,
     )
 
 

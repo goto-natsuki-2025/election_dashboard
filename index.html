@@ -81,6 +81,16 @@
         <button
           type="button"
           class="dashboard-tab"
+          id="tab-optimization"
+          data-view="optimization-dashboard"
+          aria-controls="optimization-dashboard"
+          aria-selected="false"
+        >
+          得票の最適化
+        </button>
+        <button
+          type="button"
+          class="dashboard-tab"
           id="tab-search"
           data-view="search-dashboard"
           aria-controls="search-dashboard"
@@ -363,6 +373,145 @@
             class="chart"
             aria-label="政党別当選割合の推移"
           ></div>
+        </section>
+      </section>
+
+
+      <section
+        id="optimization-dashboard"
+        class="dashboard-view"
+        role="region"
+        aria-labelledby="tab-optimization"
+      >
+        <section class="card">
+          <h2>得票の最適化</h2>
+          <p class="description">
+            当選者の得票が揃っている選挙だけを対象に、党派別の得票総数を最低当選得票で割り、理論上の最大当選数を算出しました。
+            現在の当選数との差分を見ることで、得票配分の余地を把握できます。
+          </p>
+          <div class="summary-grid">
+            <article class="summary-item">
+              <span>分析対象選挙</span>
+              <strong id="optimization-summary-elections">-</strong>
+              <small>欠損のない選挙のみ</small>
+            </article>
+            <article class="summary-item">
+              <span>除外された選挙</span>
+              <strong id="optimization-summary-excluded">-</strong>
+              <small>勝者の得票が欠ける場合など</small>
+            </article>
+            <article class="summary-item">
+              <span>分析期間</span>
+              <strong id="optimization-summary-period">-</strong>
+              <small>直近4年相当</small>
+            </article>
+          </div>
+          <p id="optimization-exclusion-note" class="help-text"></p>
+        </section>
+
+        <section class="card">
+          <h2>党別サマリーボード</h2>
+          <p class="description">
+            過去4年間に集計できた選挙で、各党が理論上確保できる最大議席数をテキストでまとめました（上位10党）。
+          </p>
+          <div id="optimization-summary-board" class="summary-board" aria-live="polite"></div>
+        </section>
+
+        <section class="card">
+          <h2>選挙別ギャップ分析</h2>
+          <p class="description">
+            選挙ごとに理論最大と実際の当選数を比較できます。上位のグラフで党別の差分を確認し、下部の検索で個別選挙を探してください。
+          </p>
+          <div class="optimization-analysis-grid">
+            <div id="optimization-election-chart" class="chart optimization-chart" aria-label="党別理論最大と実際の当選数"></div>
+            <div class="search-table-wrapper optimization-detail-table">
+              <p id="optimization-min-vote-note" class="optimization-note"></p>
+              <table class="search-table">
+                <thead>
+                  <tr>
+                    <th scope="col">党派</th>
+                    <th scope="col">実数</th>
+                    <th scope="col">総得票数</th>
+                    <th scope="col">総得票数 / 最低得票</th>
+                    <th scope="col">理論最大</th>
+                  </tr>
+                </thead>
+                <tbody id="optimization-election-detail"></tbody>
+              </table>
+            </div>
+          </div>
+          <form id="optimization-search-form" class="optimization-search-form" aria-label="選挙検索" novalidate>
+            <div class="optimization-search-group">
+              <label for="optimization-search-keyword">選挙名</label>
+              <input type="text" id="optimization-search-keyword" name="keyword" placeholder="例：○○市議会議員選挙" />
+            </div>
+            <div class="optimization-search-group">
+              <label for="optimization-search-min-gap">最小ギャップ</label>
+              <input type="number" id="optimization-search-min-gap" name="minGap" min="0" step="1" inputmode="numeric" />
+            </div>
+            <div class="optimization-search-actions">
+              <button type="button" id="optimization-search-reset" class="button-secondary">条件をリセット</button>
+            </div>
+          </form>
+          <div class="search-table-wrapper">
+            <table class="search-table">
+              <thead>
+                <tr>
+                  <th scope="col">選挙名</th>
+                  <th scope="col">日付</th>
+                  <th scope="col">当選者数</th>
+                  <th scope="col">最低当選得票</th>
+                  <th scope="col">ギャップ</th>
+                </tr>
+              </thead>
+              <tbody id="optimization-search-results"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>政党別の潜在議席</h2>
+          <p class="description">
+            各党の合計得票を最低当選ラインで割った理論最大当選数と、実際の当選数・ギャップを比較します。
+          </p>
+          <div class="search-table-wrapper">
+            <table class="search-table">
+              <thead>
+                <tr>
+                  <th scope="col">政党</th>
+                  <th scope="col">合計得票</th>
+                  <th scope="col">理論最大当選</th>
+                  <th scope="col">実際の当選</th>
+                  <th scope="col">ギャップ</th>
+                  <th scope="col">達成率</th>
+                  <th scope="col">対象選挙数</th>
+                </tr>
+              </thead>
+              <tbody id="optimization-party-table-body"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>ギャップが大きい選挙</h2>
+          <p class="description">
+            理論上の当選数と実際の当選数の差が大きい選挙（上位20件）を表示します。得票配分の改善余地が大きい自治体です。
+          </p>
+          <div class="search-table-wrapper">
+            <table class="search-table">
+              <thead>
+                <tr>
+                  <th scope="col">選挙</th>
+                  <th scope="col">最低当選得票</th>
+                  <th scope="col">合計得票</th>
+                  <th scope="col">当選者数</th>
+                  <th scope="col">ギャップ合計</th>
+                  <th scope="col">最大ギャップ党</th>
+                </tr>
+              </thead>
+              <tbody id="optimization-election-table-body"></tbody>
+            </table>
+          </div>
         </section>
       </section>
 
