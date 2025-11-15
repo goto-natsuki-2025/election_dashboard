@@ -512,6 +512,13 @@
         }
       }
 
+      .win-rate-search-block {
+        margin-top: 24px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+
       .win-rate-controls {
         display: flex;
         flex-wrap: wrap;
