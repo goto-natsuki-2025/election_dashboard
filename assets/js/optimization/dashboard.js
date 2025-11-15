@@ -350,13 +350,12 @@ function initPartyComparisonChart(parties, limit = 10) {
   };
 }
 
-function filterElectionResults(elections, { keyword, minGap }) {
+function filterElectionResults(elections, { keyword }) {
   if (!Array.isArray(elections)) {
     return [];
   }
   const rows = [];
   const keywordText = keyword?.trim().toLowerCase() ?? "";
-  const minGapValue = Number.isFinite(minGap) && minGap > 0 ? minGap : 0;
 
   elections.forEach((entry) => {
     const electionName = entry.electionKey || "";
@@ -364,9 +363,6 @@ function filterElectionResults(elections, { keyword, minGap }) {
       return;
     }
     const gap = Math.max(entry.totalGap ?? 0, 0);
-    if (gap < minGapValue) {
-      return;
-    }
     const dateLabel = formatDate(entry.electionDate);
     rows.push({
       election: entry,
@@ -428,15 +424,13 @@ function renderSearchResults(rows, { onSelect, activeIndex = -1 } = {}) {
 function setupElectionSearch(elections, chartController) {
   const form = document.getElementById("optimization-search-form");
   const keywordInput = document.getElementById("optimization-search-keyword");
-  const minGapInput = document.getElementById("optimization-search-min-gap");
   const resetButton = document.getElementById("optimization-search-reset");
-  if (!form || !keywordInput || !minGapInput || !resetButton) {
+  if (!form || !keywordInput || !resetButton) {
     return;
   }
 
   const state = {
     keyword: "",
-    minGap: 0,
   };
   let displayedRows = [];
   let activeIndex = -1;
@@ -478,20 +472,15 @@ function setupElectionSearch(elections, chartController) {
 
   const handleInputChange = debounce(() => {
     state.keyword = keywordInput.value;
-    const parsed = Number(minGapInput.value);
-    state.minGap = Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
     chartController?.showOverall();
     update(false);
   });
 
   keywordInput.addEventListener("input", handleInputChange);
-  minGapInput.addEventListener("input", handleInputChange);
 
   resetButton.addEventListener("click", () => {
     keywordInput.value = "";
-    minGapInput.value = "";
     state.keyword = "";
-    state.minGap = 0;
     chartController?.showOverall();
     update(false);
   });
