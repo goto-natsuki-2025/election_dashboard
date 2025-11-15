@@ -305,8 +305,8 @@
         gap: 12px;
       }
 
-  .optimization-detail-table {
-        max-height: 380px;
+      .optimization-detail-table {
+        max-height: none;
         overflow: visible;
         width: 100%;
       }
@@ -324,9 +324,6 @@
         }
         .optimization-search-panel {
           padding: 16px;
-        }
-        .optimization-detail-table {
-          max-height: none;
         }
       }
 
