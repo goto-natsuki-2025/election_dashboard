@@ -1,13 +1,9 @@
 import { loadWinRateDataset } from "../data-loaders.js";
 
 const MAX_PARTY_COUNT = 11;
-const YEARS_WINDOW = 20;
-const DEFAULT_AVERAGE_DAYS = 30;
-const DAY_IN_MS = 24 * 60 * 60 * 1000;
 const OVERALL_PARTY_NAME = "全体";
-let chartInstance = null;
-let aggregatedDailyData = null;
-let currentAverageDays = DEFAULT_AVERAGE_DAYS;
+const MAX_ELECTION_RESULTS = 50;
+let scatterChartInstance = null;
 
 const formatPercent = (value, digits = 1) => {
   if (typeof value !== "number" || Number.isNaN(value)) {
@@ -23,152 +19,12 @@ const formatNumber = (value) => {
   return value.toLocaleString("ja-JP");
 };
 
-const formatRange = (range) => {
-  if (!Array.isArray(range) || range.length !== 2) return "";
-  const [start, end] = range;
-  const startLabel = new Date(start).toLocaleDateString("ja-JP");
-  const endLabel = new Date(end).toLocaleDateString("ja-JP");
-  return `${startLabel} 〜 ${endLabel}`;
+const formatDateLabel = (value) => {
+  if (!(value instanceof Date) || Number.isNaN(value.getTime())) {
+    return "-";
+  }
+  return value.toLocaleDateString("ja-JP");
 };
-
-function computeWindowAggregates(points, windowDays) {
-  if (!Array.isArray(points) || points.length === 0 || !Number.isFinite(windowDays) || windowDays <= 0) {
-    return [];
-  }
-  const windowMs = windowDays * DAY_IN_MS;
-  const result = [];
-  let bucketStart = points[0].value[0];
-  let bucketEnd = bucketStart + windowMs;
-  let winnersSum = 0;
-  let candidatesSum = 0;
-
-  points.forEach((point) => {
-    const timestamp = point.value[0];
-    while (timestamp >= bucketEnd) {
-      if (candidatesSum > 0) {
-        const ratio = winnersSum / candidatesSum;
-        result.push({
-          value: [bucketEnd, Number((ratio * 100).toFixed(2))],
-          winners: winnersSum,
-          candidates: candidatesSum,
-          range: [bucketStart, bucketEnd],
-        });
-      }
-      bucketStart = bucketEnd;
-      bucketEnd += windowMs;
-      winnersSum = 0;
-      candidatesSum = 0;
-    }
-    winnersSum += point.winners ?? 0;
-    candidatesSum += point.candidates ?? 0;
-  });
-
-  if (candidatesSum > 0) {
-    const ratio = winnersSum / candidatesSum;
-    result.push({
-      value: [bucketEnd, Number((ratio * 100).toFixed(2))],
-      winners: winnersSum,
-      candidates: candidatesSum,
-      range: [bucketStart, bucketEnd],
-    });
-  }
-
-  return result;
-}
-
-function aggregateDailyPoints(events, partyOrder) {
-  const cutoff = new Date();
-  cutoff.setFullYear(cutoff.getFullYear() - YEARS_WINDOW);
-  const partyList = [OVERALL_PARTY_NAME, ...partyOrder.slice(0, MAX_PARTY_COUNT)];
-  const parties = Array.from(new Set(partyList));
-  const allowed = new Set(parties);
-  const totals = new Map(); // party -> Map(date -> bucket)
-  const overallTotals = new Map();
-
-  events.forEach((event) => {
-    if (!(event.date instanceof Date) || Number.isNaN(event.date.getTime())) return;
-    if (event.date < cutoff) return;
-
-    const dateOnly = new Date(event.date.getFullYear(), event.date.getMonth(), event.date.getDate());
-    const dateKey = dateOnly.toISOString().slice(0, 10);
-    const targetParties = [];
-    if (allowed.has(event.party)) {
-      targetParties.push(event.party);
-    }
-    targetParties.push(OVERALL_PARTY_NAME);
-
-    targetParties.forEach((party) => {
-      let partyMap = (party === OVERALL_PARTY_NAME ? overallTotals : totals.get(party));
-      if (!partyMap) {
-        partyMap = new Map();
-        if (party === OVERALL_PARTY_NAME) {
-          // already assigned to overallTotals
-        } else {
-          totals.set(party, partyMap);
-        }
-      }
-      let bucket = partyMap.get(dateKey);
-      if (!bucket) {
-        bucket = { date: dateOnly, winners: 0, candidates: 0 };
-        partyMap.set(dateKey, bucket);
-      }
-      bucket.winners += event.winners ?? 0;
-      bucket.candidates += event.candidates ?? 0;
-      if (party === OVERALL_PARTY_NAME) {
-        overallTotals.set(dateKey, bucket);
-      }
-    });
-  });
-
-  let minDate = null;
-  let maxDate = null;
-  const pointsByParty = new Map();
-
-  for (const party of parties) {
-    const partyMap = totals.get(party);
-    if (!partyMap) continue;
-
-    const data = Array.from(partyMap.values())
-      .filter((entry) => entry.candidates > 0)
-      .sort((a, b) => a.date - b.date)
-      .map((entry) => {
-        const ratio = entry.winners / entry.candidates;
-        const percent = Number((ratio * 100).toFixed(2));
-        if (!minDate || entry.date < minDate) minDate = entry.date;
-        if (!maxDate || entry.date > maxDate) maxDate = entry.date;
-        return {
-          value: [entry.date.getTime(), percent],
-          winners: entry.winners,
-          candidates: entry.candidates,
-        };
-      });
-
-    if (data.length === 0) continue;
-    pointsByParty.set(party, data);
-  }
-
-  if (overallTotals.size > 0) {
-    const data = Array.from(overallTotals.values())
-      .filter((entry) => entry.candidates > 0)
-      .sort((a, b) => a.date - b.date)
-      .map((entry) => {
-        const ratio = entry.winners / entry.candidates;
-        const percent = Number((ratio * 100).toFixed(2));
-        if (!minDate || entry.date < minDate) minDate = entry.date;
-        if (!maxDate || entry.date > maxDate) maxDate = entry.date;
-        return {
-          value: [entry.date.getTime(), percent],
-          winners: entry.winners,
-          candidates: entry.candidates,
-        };
-      });
-    if (data.length > 0) {
-      pointsByParty.set(OVERALL_PARTY_NAME, data);
-    }
-  }
-
-  return { parties, pointsByParty, minDate, maxDate };
-}
 
 function renderSummary(summary) {
   const container = document.getElementById("win-rate-summary");
@@ -226,174 +82,309 @@ function renderSummary(summary) {
   return limitedEntries.map((entry) => entry.party).filter(Boolean);
 }
 
-function buildChartSeries(aggregated, averageDays) {
-  if (!aggregated) {
-    return { series: [], minDate: null, maxDate: null };
+function buildElectionScatterSeries(election) {
+  if (!election || !Array.isArray(election.parties)) {
+    return [];
   }
-
-  const scatterSeries = [];
-  const averageSeries = [];
-
-  aggregated.parties.forEach((party) => {
-    const points = aggregated.pointsByParty.get(party);
-    if (!points || points.length === 0) return;
-
-    if (party !== OVERALL_PARTY_NAME) {
-      scatterSeries.push({
-        name: `${party}（散布）`,
+  return election.parties
+    .filter((party) => (party.candidates ?? 0) > 0)
+    .sort((a, b) => (b.winners ?? 0) - (a.winners ?? 0))
+    .slice(0, MAX_PARTY_COUNT)
+    .map((party) => {
+      const candidates = party.candidates ?? 0;
+      const winners = party.winners ?? 0;
+      const ratio =
+        typeof party.ratio === "number"
+          ? party.ratio
+          : candidates > 0
+          ? winners / candidates
+          : null;
+      if (ratio === null) return null;
+      return {
+        name: party.party || "不明",
         type: "scatter",
-        data: points,
-        symbolSize: 5,
-        itemStyle: { opacity: 0.35 },
-      });
-    }
-
-    const aggregates = computeWindowAggregates(points, averageDays);
-    if (aggregates.length > 0) {
-      averageSeries.push({
-        name: party,
-        type: "line",
-        data: aggregates,
-        smooth: false,
-        showSymbol: true,
-        symbolSize: 5,
-        connectNulls: false,
-        lineStyle: { width: 2 },
-      });
-    }
-  });
-
-  return {
-    series: [...scatterSeries, ...averageSeries],
-    minDate: aggregated.minDate,
-    maxDate: aggregated.maxDate,
-  };
+        data: [
+          {
+            value: [candidates, Number((ratio * 100).toFixed(2))],
+            electionKey: election.electionKey,
+            date: election.date,
+            winners,
+            candidates,
+          },
+        ],
+        symbolSize: Math.min(36, Math.max(8, Math.sqrt(Math.max(1, candidates)) * 2)),
+        itemStyle: { opacity: 0.85 },
+      };
+    })
+    .filter(Boolean);
 }
 
-function renderAggregatedChart(averageDays) {
+function renderScatterChart(election) {
   const container = document.getElementById("win-rate-chart");
-  if (!container || !aggregatedDailyData) return null;
-
-  const { series, minDate, maxDate } = buildChartSeries(aggregatedDailyData, averageDays);
-
+  if (!container) return null;
+  const series = buildElectionScatterSeries(election);
   if (series.length === 0) {
-    container.textContent = "データがありません。";
-    if (chartInstance) {
-      chartInstance.dispose();
-      chartInstance = null;
+    container.textContent = "選挙を検索して選択すると散布図を表示します。";
+    if (scatterChartInstance) {
+      scatterChartInstance.dispose();
+      scatterChartInstance = null;
     }
     return null;
   }
-
-  if (chartInstance) {
-    chartInstance.dispose();
+  if (scatterChartInstance) {
+    scatterChartInstance.dispose();
   }
-  chartInstance = echarts.init(container, undefined, { renderer: "svg" });
-
-  chartInstance.setOption({
-    grid: { top: 48, left: 64, right: 32, bottom: 48 },
+  scatterChartInstance = echarts.init(container, undefined, { renderer: "svg" });
+  scatterChartInstance.setOption({
+    grid: { top: 32, left: 64, right: 32, bottom: 48 },
+    legend: { type: "scroll", top: 0 },
     tooltip: {
       trigger: "item",
       formatter: (params) => {
         if (!params?.data) return "";
-        const seriesName = params.seriesName;
-        const dateLabel = new Date(params.value[0]).toLocaleDateString("ja-JP");
-        const percent = typeof params.value[1] === "number" ? params.value[1].toFixed(1) : "-";
-        const winners = params.data.winners ?? null;
-        const candidates = params.data.candidates ?? null;
-        const detail =
-          typeof winners === "number" && typeof candidates === "number"
-            ? `集計: 当選 ${formatNumber(winners)} / 立候補 ${formatNumber(candidates)} 人`
-            : null;
-        const rangeText = params.data.range ? `期間: ${formatRange(params.data.range)}` : null;
-        return [seriesName, `${dateLabel}: ${percent}%`, rangeText, detail]
+        const { electionKey, date, winners, candidates } = params.data;
+        const ratio =
+          typeof params.value?.[1] === "number"
+            ? `${params.value[1].toFixed(1)}%`
+            : "-";
+        return [
+          params.seriesName,
+          electionKey || "不明",
+          date ? formatDateLabel(date) : "",
+          `候補者数: ${formatNumber(candidates)}`,
+          `当選者数: ${formatNumber(winners)}`,
+          `当選割合: ${ratio}`,
+        ]
           .filter(Boolean)
           .join("<br/>");
       },
     },
-    legend: {
-      type: "scroll",
-      top: 0,
-      data: aggregatedDailyData.parties,
-    },
     xAxis: {
-      type: "time",
-      min: minDate ? minDate.getTime() : undefined,
-      max: maxDate ? maxDate.getTime() : undefined,
-      axisLabel: {
-        formatter: (value) => {
-          const date = new Date(value);
-          if (Number.isNaN(date.getTime())) return "";
-          return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-        },
-      },
+      type: "value",
+      name: "立候補者数",
+      min: 0,
+      axisLabel: { formatter: (value) => formatNumber(value) },
+      splitLine: { show: true, lineStyle: { color: "#e2e8f0" } },
     },
     yAxis: {
       type: "value",
+      name: "当選割合 (%)",
       min: 0,
       max: 100,
-      axisLabel: {
-        formatter: (value) => `${value}%`,
-      },
+      axisLabel: { formatter: (value) => `${value}%` },
       splitLine: { show: true, lineStyle: { color: "#e2e8f0" } },
     },
-    dataZoom: [
-      {
-        type: "inside",
-        xAxisIndex: 0,
-      },
-      {
-        type: "slider",
-        xAxisIndex: 0,
-        height: 24,
-        bottom: 8,
-      },
-    ],
     series,
   });
-
-  return chartInstance;
+  return scatterChartInstance;
 }
 
-function setupAverageControls() {
-  const form = document.getElementById("win-rate-average-form");
-  const input = document.getElementById("win-rate-average-days");
-  const clearButton = document.getElementById("win-rate-clear-series");
-  if (!form || !input) return;
-  input.value = String(currentAverageDays);
-
-  form.addEventListener("submit", (event) => {
-    event.preventDefault();
-    const value = Number(input.value);
-    if (Number.isFinite(value) && value > 0 && value <= 365) {
-      currentAverageDays = Math.round(value);
-      renderAggregatedChart(currentAverageDays);
-    } else {
-      input.value = String(currentAverageDays);
+function groupEventsByElection(events = []) {
+  const groups = new Map();
+  events.forEach((event) => {
+    const electionKey = event.electionKey || "不明";
+    if (!groups.has(electionKey)) {
+      groups.set(electionKey, {
+        electionKey,
+        date: event.date instanceof Date ? event.date : null,
+        dateValue:
+          event.date instanceof Date && !Number.isNaN(event.date.getTime())
+            ? event.date.getTime()
+            : null,
+        totalCandidates: 0,
+        totalWinners: 0,
+        parties: [],
+      });
     }
+    const group = groups.get(electionKey);
+    const candidates = event.candidates ?? 0;
+    const winners = event.winners ?? 0;
+    group.totalCandidates += candidates;
+    group.totalWinners += winners;
+    if (event.date instanceof Date && !Number.isNaN(event.date.getTime())) {
+      const timestamp = event.date.getTime();
+      if (!group.dateValue || timestamp > group.dateValue) {
+        group.date = event.date;
+        group.dateValue = timestamp;
+      }
+    }
+    group.parties.push({
+      party: event.party || "不明",
+      candidates,
+      winners,
+      ratio:
+        typeof event.ratio === "number"
+          ? event.ratio
+          : candidates > 0
+          ? winners / candidates
+          : null,
+    });
   });
 
-  if (clearButton) {
-    clearButton.addEventListener("click", () => {
-      if (!chartInstance || !aggregatedDailyData) return;
-      aggregatedDailyData.parties.forEach((party) => {
-        chartInstance.dispatchAction({ type: "legendUnSelect", name: party });
-        const scatterName = `${party}（散布）`;
-        chartInstance.dispatchAction({ type: "legendUnSelect", name: scatterName });
-      });
+  return Array.from(groups.values()).map((group) => {
+    const ratio =
+      group.totalCandidates > 0 ? group.totalWinners / group.totalCandidates : null;
+    const topParty = group.parties
+      .slice()
+      .sort((a, b) => (b.winners ?? 0) - (a.winners ?? 0))[0] || null;
+    return {
+      ...group,
+      ratio,
+      topParty,
+      searchLabel: group.electionKey.toLowerCase(),
+    };
+  });
+}
+
+function renderElectionSearchResults(rows, { activeKey, onSelect } = {}) {
+  const tbody = document.getElementById("win-rate-election-results");
+  const countLabel = document.getElementById("win-rate-election-count");
+  if (!tbody) return;
+  tbody.innerHTML = "";
+  if (rows.length === 0) {
+    const empty = document.createElement("tr");
+    empty.innerHTML =
+      '<td colspan="6" style="text-align:center; color: var(--text-muted); padding: 32px 16px;">該当する選挙がありません。</td>';
+    tbody.appendChild(empty);
+  } else {
+    const fragment = document.createDocumentFragment();
+    rows.forEach((row) => {
+      const topParty = row.topParty || null;
+      const topPartyRatio =
+        topParty && typeof topParty.ratio === "number"
+          ? topParty.ratio
+          : topParty && topParty.candidates > 0
+          ? topParty.winners / topParty.candidates
+          : null;
+      const topPartyLabel = topParty
+        ? `${topParty.party}${
+            topPartyRatio !== null ? `（${formatPercent(topPartyRatio)}）` : ""
+          }`
+        : "-";
+      const tr = document.createElement("tr");
+      tr.classList.add("win-rate-search-row");
+      if (row.electionKey === activeKey) {
+        tr.classList.add("is-active");
+      }
+      tr.innerHTML = `
+        <td style="min-width:220px">${row.electionKey}</td>
+        <td>${formatDateLabel(row.date)}</td>
+        <td class="numeric">${formatNumber(row.totalCandidates)}</td>
+        <td class="numeric">${formatNumber(row.totalWinners)}</td>
+        <td class="numeric">${
+          row.ratio === null ? "-" : formatPercent(row.ratio, 1)
+        }</td>
+        <td>${topPartyLabel}</td>
+      `;
+      tr.addEventListener("click", () => onSelect?.(row));
+      fragment.appendChild(tr);
     });
+    tbody.appendChild(fragment);
   }
+  if (countLabel) {
+    countLabel.textContent = `${rows.length.toLocaleString("ja-JP")} 件表示中`;
+  }
+}
+
+function setupElectionSearch(events = []) {
+  const grouped = groupEventsByElection(events).sort(
+    (a, b) => (b.dateValue ?? 0) - (a.dateValue ?? 0),
+  );
+  const keywordInput = document.getElementById("win-rate-search-text");
+  const minCandidatesInput = document.getElementById("win-rate-min-candidates");
+  const minRatioInput = document.getElementById("win-rate-min-ratio");
+  const resetButton = document.getElementById("win-rate-search-reset");
+  if (!keywordInput || !minCandidatesInput || !minRatioInput || !resetButton) {
+    return;
+  }
+  const state = {
+    keyword: "",
+    minCandidates: 0,
+    minRatio: 0,
+    selectedKey: null,
+    rows: grouped.slice(0, MAX_ELECTION_RESULTS),
+  };
+
+  const handleRowSelect = (entry) => {
+    state.selectedKey = entry?.electionKey ?? null;
+    renderElectionSearchResults(state.rows, {
+      activeKey: state.selectedKey,
+      onSelect: handleRowSelect,
+    });
+    renderScatterChart(entry ?? null);
+  };
+
+  const applyFilters = (preserveSelection = false) => {
+    const text = state.keyword.toLowerCase();
+    const minCandidates = state.minCandidates;
+    const minRatio = state.minRatio > 0 ? state.minRatio / 100 : 0;
+    const filtered = grouped
+      .filter((entry) => {
+        if (text && !entry.searchLabel.includes(text)) return false;
+        if (minCandidates > 0 && entry.totalCandidates < minCandidates) return false;
+        if (minRatio > 0 && (entry.ratio ?? 0) < minRatio) return false;
+        return true;
+      })
+      .slice(0, MAX_ELECTION_RESULTS);
+    state.rows = filtered;
+    if (!preserveSelection || !filtered.some((entry) => entry.electionKey === state.selectedKey)) {
+      state.selectedKey = filtered[0]?.electionKey ?? null;
+    }
+    renderElectionSearchResults(state.rows, {
+      activeKey: state.selectedKey,
+      onSelect: handleRowSelect,
+    });
+    const activeEntry =
+      state.rows.find((entry) => entry.electionKey === state.selectedKey) ?? null;
+    renderScatterChart(activeEntry);
+  };
+
+  keywordInput.addEventListener("input", (event) => {
+    state.keyword = event.target.value.trim();
+    applyFilters();
+  });
+
+  minCandidatesInput.addEventListener("input", (event) => {
+    const value = Number(event.target.value);
+    state.minCandidates = Number.isFinite(value) && value > 0 ? value : 0;
+    applyFilters(true);
+  });
+
+  minRatioInput.addEventListener("input", (event) => {
+    const value = Number(event.target.value);
+    state.minRatio =
+      Number.isFinite(value) && value > 0 ? Math.max(0, Math.min(100, value)) : 0;
+    applyFilters(true);
+  });
+
+  resetButton.addEventListener("click", () => {
+    state.keyword = "";
+    state.minCandidates = 0;
+    state.minRatio = 0;
+    state.selectedKey = null;
+    keywordInput.value = "";
+    minCandidatesInput.value = "";
+    minRatioInput.value = "";
+    applyFilters();
+  });
+
+  state.selectedKey = grouped[0]?.electionKey ?? null;
+  state.rows = grouped.slice(0, MAX_ELECTION_RESULTS);
+  renderElectionSearchResults(state.rows, {
+    activeKey: state.selectedKey,
+    onSelect: handleRowSelect,
+  });
+  renderScatterChart(state.rows.find((entry) => entry.electionKey === state.selectedKey) || null);
 }
 
 export async function initWinRateDashboard() {
   const dataset = await loadWinRateDataset();
-  const parties = renderSummary(dataset.summary) ?? [];
-  setupAverageControls();
-  aggregatedDailyData = aggregateDailyPoints(dataset.events ?? [], parties);
-  const chart = renderAggregatedChart(currentAverageDays);
+  renderSummary(dataset.summary);
+  renderScatterChart(null);
+  setupElectionSearch(dataset.events ?? []);
   return {
     resize: () => {
-      chart?.resize?.();
+      scatterChartInstance?.resize?.();
     },
   };
 }

@@ -348,31 +348,85 @@
           <div id="win-rate-summary" class="win-rate-summary" aria-live="polite"></div>
         </section>
         <section class="card">
-          <h2>政党別当選割合の推移</h2>
+          <h2>立候補者数と当選割合の散布図</h2>
           <p class="description">
-            日ごとの当選割合を散布図で表示し、任意の日数で集計した期間平均を折れ線で重ねています。期間設定を変えることで政党の勢いを把握しやすくなります。
+            各政党・自治体ごとの立候補者数（横軸）と当選割合（縦軸）を散布図で表示します。下部の検索で選択した選挙の結果のみが表示されます。
           </p>
-          <form class="win-rate-controls" id="win-rate-average-form">
-            <label for="win-rate-average-days">集計期間（日）</label>
-            <div class="control-group">
-              <input
-                type="number"
-                id="win-rate-average-days"
-                name="win-rate-average-days"
-                min="1"
-                max="365"
-                step="1"
-                inputmode="numeric"
-              />
-              <button type="submit">反映</button>
-              <button type="button" id="win-rate-clear-series" class="button-secondary">全政党を非表示</button>
-            </div>
-          </form>
           <div
             id="win-rate-chart"
             class="chart"
-            aria-label="政党別当選割合の推移"
+            aria-label="立候補者数と当選割合の散布図"
           ></div>
+        </section>
+        <section class="card">
+          <h2>自治体別の選挙検索</h2>
+          <p class="description">
+            得票の最適化ページと同様に、自治体ごとの選挙を検索できます。候補者数や当選割合で絞り込み、気になる自治体を素早く探してください。
+          </p>
+          <div class="optimization-search-panel" aria-label="自治体検索">
+            <form
+              id="win-rate-election-search"
+              class="optimization-search-form"
+              novalidate
+            >
+              <div class="optimization-search-group">
+                <label for="win-rate-search-text">自治体・選挙名</label>
+                <input
+                  type="text"
+                  id="win-rate-search-text"
+                  name="keyword"
+                  placeholder="例：八王子市議会議員選挙"
+                />
+              </div>
+              <div class="optimization-search-group">
+                <label for="win-rate-min-candidates">最小候補者数</label>
+                <input
+                  type="number"
+                  id="win-rate-min-candidates"
+                  name="minCandidates"
+                  min="0"
+                  step="1"
+                  inputmode="numeric"
+                />
+              </div>
+              <div class="optimization-search-group">
+                <label for="win-rate-min-ratio">最低当選割合 (%)</label>
+                <input
+                  type="number"
+                  id="win-rate-min-ratio"
+                  name="minRatio"
+                  min="0"
+                  max="100"
+                  step="1"
+                  inputmode="numeric"
+                />
+              </div>
+              <div class="optimization-search-actions">
+                <button type="button" id="win-rate-search-reset" class="button-secondary">
+                  条件をリセット
+                </button>
+              </div>
+            </form>
+          </div>
+          <div class="search-results-header">
+            <h3>検索結果</h3>
+            <p id="win-rate-election-count" class="search-results-count">0 件表示中</p>
+          </div>
+          <div class="search-table-wrapper">
+            <table class="search-table">
+              <thead>
+                <tr>
+                  <th scope="col">選挙名</th>
+                  <th scope="col">投票日</th>
+                  <th scope="col">候補者数</th>
+                  <th scope="col">当選者数</th>
+                  <th scope="col">当選割合</th>
+                  <th scope="col">主な政党</th>
+                </tr>
+              </thead>
+              <tbody id="win-rate-election-results"></tbody>
+            </table>
+          </div>
         </section>
       </section>
 
@@ -673,7 +727,7 @@
       integrity="sha384-vpn/ucn7785xAq02KoJV78mMCB+FXl+yfBWS2MRjZkzEEvUEsJU3ZarsOD9MSGxu"
       crossorigin="anonymous"
     ></script>
-    <script type="module" src="assets/js/main.js?v=20241103"></script>
+    <script type="module" src="assets/js/main.js?v=20241105"></script>
   </body>
 </html>
 

@@ -216,6 +216,10 @@
   background: rgba(37, 99, 235, 0.05);
 }
 
+.search-table tbody tr.is-active {
+  background: rgba(37, 99, 235, 0.12);
+}
+
 .optimization-detail-table .search-table th:first-child,
 .optimization-detail-table .search-table td:first-child {
   text-align: left;
