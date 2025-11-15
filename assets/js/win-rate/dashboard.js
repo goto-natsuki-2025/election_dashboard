@@ -166,7 +166,7 @@ function renderScatterChart(election) {
   }
   scatterChartInstance = echarts.init(container, undefined, { renderer: "svg" });
   scatterChartInstance.setOption({
-    grid: { top: 16, left: 64, right: 32, bottom: 48 },
+    grid: { top: 32, left: 72, right: 40, bottom: 72 },
     legend: { show: false },
     tooltip: {
       trigger: "item",
@@ -195,6 +195,8 @@ function renderScatterChart(election) {
     xAxis: {
       type: "value",
       name: "立候補者数",
+      nameLocation: "middle",
+      nameGap: 36,
       min: 0,
       axisLabel: { formatter: (value) => formatNumber(value) },
       splitLine: { show: true, lineStyle: { color: "#e2e8f0" } },
