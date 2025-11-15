@@ -15,6 +15,18 @@ const formatPercent = (value) => {
   return `${(value * 100).toFixed(1)}%`;
 };
 
+const detectElectionScope = (text = "") => {
+  const normalized = text.trim();
+  if (!normalized) return "other";
+  if (/(都|道|府|県)議会議員(?:補欠)?選挙/u.test(normalized)) {
+    return "prefectural";
+  }
+  if (/((市|区|町|村))議会議員(?:補欠)?選挙/u.test(normalized)) {
+    return "municipal";
+  }
+  return "other";
+};
+
 const REASON_LABELS = {
   executive_election: "首長選挙",
   no_winners: "当選者なし",
@@ -350,16 +362,20 @@ function initPartyComparisonChart(parties, limit = 10) {
   };
 }
 
-function filterElectionResults(elections, { keyword }) {
+function filterElectionResults(elections, { keyword, scope }) {
   if (!Array.isArray(elections)) {
     return [];
   }
   const rows = [];
   const keywordText = keyword?.trim().toLowerCase() ?? "";
+  const scopeFilter = scope && scope !== "all" ? scope : null;
 
   elections.forEach((entry) => {
     const electionName = entry.electionKey || "";
     if (keywordText && !electionName.toLowerCase().includes(keywordText)) {
+      return;
+    }
+    if (scopeFilter && entry.scope !== scopeFilter) {
       return;
     }
     const gap = Math.max(entry.totalGap ?? 0, 0);
@@ -424,13 +440,15 @@ function renderSearchResults(rows, { onSelect, activeIndex = -1 } = {}) {
 function setupElectionSearch(elections, chartController) {
   const form = document.getElementById("optimization-search-form");
   const keywordInput = document.getElementById("optimization-search-keyword");
+  const scopeInputs = Array.from(document.querySelectorAll('input[name="optimization-scope"]'));
   const resetButton = document.getElementById("optimization-search-reset");
-  if (!form || !keywordInput || !resetButton) {
+  if (!form || !keywordInput || scopeInputs.length === 0 || !resetButton) {
     return;
   }
 
   const state = {
     keyword: "",
+    scope: scopeInputs.find((input) => input.checked)?.value ?? "all",
   };
   let displayedRows = [];
   let activeIndex = -1;
@@ -478,8 +496,24 @@ function setupElectionSearch(elections, chartController) {
 
   keywordInput.addEventListener("input", handleInputChange);
 
+  scopeInputs.forEach((input) => {
+    input.addEventListener("change", () => {
+      if (input.checked) {
+        state.scope = input.value;
+        chartController?.showOverall();
+        update(false);
+      }
+    });
+  });
+
   resetButton.addEventListener("click", () => {
     keywordInput.value = "";
+    scopeInputs.forEach((input) => {
+      input.checked = input.value === "all";
+      if (input.checked) {
+        state.scope = input.value;
+      }
+    });
     state.keyword = "";
     chartController?.showOverall();
     update(false);
@@ -493,9 +527,12 @@ export async function initVoteOptimizationDashboard() {
   renderSummary(data.summary);
   renderSummaryBoard(data.parties);
   const chartController = initPartyComparisonChart(data.parties);
-  setupElectionSearch(data.elections, chartController);
+  const scopedElections = Array.isArray(data.elections)
+    ? data.elections.map((entry) => ({ ...entry, scope: detectElectionScope(entry.electionKey || "") }))
+    : [];
+  setupElectionSearch(scopedElections, chartController);
   renderPartyTable(data.parties);
-  renderElectionTable(data.elections);
+  renderElectionTable(scopedElections);
   return {
     resize() {
       chartController?.resize?.();
