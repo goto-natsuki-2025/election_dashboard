@@ -293,6 +293,18 @@
         align-items: start;
       }
 
+      .optimization-search-panel {
+        margin-top: 24px;
+        padding: 20px;
+        border-radius: 16px;
+        background: var(--surface);
+        border: 1px dashed var(--border);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
   .optimization-detail-table {
         max-height: 380px;
         overflow: visible;
@@ -309,6 +321,9 @@
         .optimization-analysis-grid {
           grid-template-columns: 1fr;
           gap: 16px;
+        }
+        .optimization-search-panel {
+          padding: 16px;
         }
         .optimization-detail-table {
           max-height: none;

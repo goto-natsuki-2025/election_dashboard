@@ -440,32 +440,53 @@
               </table>
             </div>
           </div>
-          <form id="optimization-search-form" class="optimization-search-form" aria-label="選挙検索" novalidate>
-            <div class="optimization-search-group">
-              <label for="optimization-search-keyword">選挙名</label>
-              <input type="text" id="optimization-search-keyword" name="keyword" placeholder="例：○○市議会議員選挙" />
+          <div class="optimization-search-panel" aria-label="ギャップ検索">
+            <form
+              id="optimization-search-form"
+              class="optimization-search-form"
+              aria-label="選挙検索"
+              novalidate
+            >
+              <div class="optimization-search-group">
+                <label for="optimization-search-keyword">選挙名</label>
+                <input
+                  type="text"
+                  id="optimization-search-keyword"
+                  name="keyword"
+                  placeholder="例：○○市議会議員選挙"
+                />
+              </div>
+              <div class="optimization-search-group">
+                <label for="optimization-search-min-gap">最小ギャップ</label>
+                <input
+                  type="number"
+                  id="optimization-search-min-gap"
+                  name="minGap"
+                  min="0"
+                  step="1"
+                  inputmode="numeric"
+                />
+              </div>
+              <div class="optimization-search-actions">
+                <button type="button" id="optimization-search-reset" class="button-secondary">
+                  条件をリセット
+                </button>
+              </div>
+            </form>
+            <div class="search-table-wrapper">
+              <table class="search-table">
+                <thead>
+                  <tr>
+                    <th scope="col">選挙名</th>
+                    <th scope="col">日付</th>
+                    <th scope="col">当選者数</th>
+                    <th scope="col">最低当選得票</th>
+                    <th scope="col">ギャップ</th>
+                  </tr>
+                </thead>
+                <tbody id="optimization-search-results"></tbody>
+              </table>
             </div>
-            <div class="optimization-search-group">
-              <label for="optimization-search-min-gap">最小ギャップ</label>
-              <input type="number" id="optimization-search-min-gap" name="minGap" min="0" step="1" inputmode="numeric" />
-            </div>
-            <div class="optimization-search-actions">
-              <button type="button" id="optimization-search-reset" class="button-secondary">条件をリセット</button>
-            </div>
-          </form>
-          <div class="search-table-wrapper">
-            <table class="search-table">
-              <thead>
-                <tr>
-                  <th scope="col">選挙名</th>
-                  <th scope="col">日付</th>
-                  <th scope="col">当選者数</th>
-                  <th scope="col">最低当選得票</th>
-                  <th scope="col">ギャップ</th>
-                </tr>
-              </thead>
-              <tbody id="optimization-search-results"></tbody>
-            </table>
           </div>
         </section>
 
