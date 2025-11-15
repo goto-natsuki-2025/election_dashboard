@@ -217,9 +217,10 @@ function renderScatterChart(election) {
           show: true,
           position: direction > 0 ? "top" : "bottom",
           formatter: entry.name,
-          fontSize: 12,
+          fontSize: 14,
+          fontWeight: 600,
           color: "#0f172a",
-          offset: [6, direction * 6],
+          offset: [8, direction * 8],
         },
       };
     }),
