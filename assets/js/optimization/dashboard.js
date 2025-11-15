@@ -93,7 +93,7 @@ function renderSummary(summary) {
   }
 }
 
-function renderSummaryBoard(parties, limit = 10) {
+function renderSummaryBoard(parties, limit = 8) {
   const container = document.getElementById("optimization-summary-board");
   if (!container) return;
   container.innerHTML = "";
