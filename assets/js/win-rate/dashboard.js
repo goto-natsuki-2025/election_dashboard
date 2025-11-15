@@ -182,58 +182,42 @@ function renderScatterChart(election) {
 function groupEventsByElection(events = []) {
   const groups = new Map();
   events.forEach((event) => {
-    const electionKey = event.electionKey || "不明";
-    if (!groups.has(electionKey)) {
-      groups.set(electionKey, {
-        electionKey,
-        date: event.date instanceof Date ? event.date : null,
-        dateValue:
-          event.date instanceof Date && !Number.isNaN(event.date.getTime())
-            ? event.date.getTime()
-            : null,
+    const electionName = event.electionKey || "不明";
+    const hasDate = event.date instanceof Date && !Number.isNaN(event.date.getTime());
+    const dateOnly = hasDate
+      ? new Date(event.date.getFullYear(), event.date.getMonth(), event.date.getDate())
+      : null;
+    const dateKey = dateOnly ? dateOnly.toISOString().slice(0, 10) : "unknown";
+    const compositeKey = `${electionName}__${dateKey}`;
+    if (!groups.has(compositeKey)) {
+      groups.set(compositeKey, {
+        id: compositeKey,
+        electionName,
+        date: dateOnly,
+        dateValue: dateOnly ? dateOnly.getTime() : null,
         totalCandidates: 0,
         totalWinners: 0,
-        parties: [],
+        partyTotals: new Map(),
       });
     }
-    const group = groups.get(electionKey);
+    const group = groups.get(compositeKey);
     const candidates = event.candidates ?? 0;
     const winners = event.winners ?? 0;
     group.totalCandidates += candidates;
     group.totalWinners += winners;
-    if (event.date instanceof Date && !Number.isNaN(event.date.getTime())) {
-      const timestamp = event.date.getTime();
-      if (!group.dateValue || timestamp > group.dateValue) {
-        group.date = event.date;
-        group.dateValue = timestamp;
-      }
+    const partyName = event.party || "不明";
+    if (!group.partyTotals.has(partyName)) {
+      group.partyTotals.set(partyName, { party: partyName, candidates: 0, winners: 0 });
     }
-    if (!Array.isArray(group.parties)) {
-      group.parties = [];
-    }
-    group.parties.push({
-      party: event.party || "不明",
-      candidates,
-      winners,
-    });
+    const info = group.partyTotals.get(partyName);
+    info.candidates += candidates;
+    info.winners += winners;
   });
 
   return Array.from(groups.values()).map((group) => {
     const ratio =
       group.totalCandidates > 0 ? group.totalWinners / group.totalCandidates : null;
-    const partyAggregates = Array.isArray(group.parties)
-      ? group.parties.reduce((acc, entry) => {
-          const name = entry.party || "不明";
-          if (!acc.has(name)) {
-            acc.set(name, { party: name, candidates: 0, winners: 0 });
-          }
-          const info = acc.get(name);
-          info.candidates += entry.candidates ?? 0;
-          info.winners += entry.winners ?? 0;
-          return acc;
-        }, new Map())
-      : new Map();
-    const aggregatedParties = Array.from(partyAggregates.values()).map((entry) => ({
+    const aggregatedParties = Array.from(group.partyTotals.values()).map((entry) => ({
       party: entry.party,
       candidates: entry.candidates,
       winners: entry.winners,
@@ -243,11 +227,16 @@ function groupEventsByElection(events = []) {
       .slice()
       .sort((a, b) => (b.winners ?? 0) - (a.winners ?? 0))[0] || null;
     return {
-      ...group,
+      id: group.id,
+      electionKey: group.electionName,
+      date: group.date,
+      dateValue: group.dateValue,
+      totalCandidates: group.totalCandidates,
+      totalWinners: group.totalWinners,
+      parties: aggregatedParties,
       ratio,
       topParty,
-      parties: aggregatedParties,
-      searchLabel: group.electionKey.toLowerCase(),
+      searchLabel: group.electionName.toLowerCase(),
     };
   });
 }
@@ -279,7 +268,7 @@ function renderElectionSearchResults(rows, { activeKey, onSelect } = {}) {
         : "-";
       const tr = document.createElement("tr");
       tr.classList.add("win-rate-search-row");
-      if (row.electionKey === activeKey) {
+      if (row.id === activeKey) {
         tr.classList.add("is-active");
       }
       tr.innerHTML = `
@@ -322,7 +311,7 @@ function setupElectionSearch(events = []) {
   };
 
   const handleRowSelect = (entry) => {
-    state.selectedKey = entry?.electionKey ?? null;
+    state.selectedKey = entry?.id ?? null;
     renderElectionSearchResults(state.rows, {
       activeKey: state.selectedKey,
       onSelect: handleRowSelect,
@@ -343,15 +332,14 @@ function setupElectionSearch(events = []) {
       })
       .slice(0, MAX_ELECTION_RESULTS);
     state.rows = filtered;
-    if (!preserveSelection || !filtered.some((entry) => entry.electionKey === state.selectedKey)) {
-      state.selectedKey = filtered[0]?.electionKey ?? null;
+    if (!preserveSelection || !filtered.some((entry) => entry.id === state.selectedKey)) {
+      state.selectedKey = filtered[0]?.id ?? null;
     }
     renderElectionSearchResults(state.rows, {
       activeKey: state.selectedKey,
       onSelect: handleRowSelect,
     });
-    const activeEntry =
-      state.rows.find((entry) => entry.electionKey === state.selectedKey) ?? null;
+    const activeEntry = state.rows.find((entry) => entry.id === state.selectedKey) ?? null;
     renderScatterChart(activeEntry);
   };
 
@@ -384,7 +372,7 @@ function setupElectionSearch(events = []) {
     applyFilters();
   });
 
-  state.selectedKey = grouped[0]?.electionKey ?? null;
+  state.selectedKey = grouped[0]?.id ?? null;
   state.rows = grouped.slice(0, MAX_ELECTION_RESULTS);
   renderElectionSearchResults(state.rows, {
     activeKey: state.selectedKey,
