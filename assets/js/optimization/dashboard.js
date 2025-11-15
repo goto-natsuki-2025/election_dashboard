@@ -569,10 +569,10 @@ function renderElectionDetailTable(election) {
       const row = document.createElement("tr");
       row.innerHTML = `
         <td>${result.party || "不明"}</td>
-        <td class="numeric">${formatNumber(result.actualWinners ?? 0)}</td>
         <td class="numeric">${formatNumber(totalVotes)}</td>
         <td class="numeric">${ratio === null ? "-" : ratio.toFixed(2)}</td>
         <td class="numeric">${formatNumber(result.potentialWinners ?? 0)}</td>
+        <td class="numeric">${formatNumber(result.actualWinners ?? 0)}</td>
       `;
       tbody.appendChild(row);
     });
