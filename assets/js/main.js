@@ -11,6 +11,7 @@ import {
 } from "./renderers.js";
 import { DATA_PATH } from "./constants.js";
 
+const ASSET_VERSION = "?v=20241103";
 const PREFETCHED_RESOURCES = new Set();
 function scheduleIdleTask(callback, timeout = 2000) {
   if ("requestIdleCallback" in window) {
@@ -33,7 +34,7 @@ function prefetchResource(href, { rel = "prefetch", as } = {}) {
   PREFETCHED_RESOURCES.add(href);
 }
 
-const moduleUrl = (specifier) => new URL(specifier, import.meta.url).href;
+const moduleUrl = (specifier) => new URL(`${specifier}${ASSET_VERSION}`, import.meta.url).href;
 const MAP_PREFECTURE_TOPO_PATH = "assets/data/japan.topojson.gz";
 const MAP_MUNICIPAL_TOPO_PATH = "assets/data/municipal.topojson.gz";
 
@@ -120,7 +121,7 @@ async function main() {
   let compensationModulePromise;
   const loadCompensationModule = () => {
     if (!compensationModulePromise) {
-      compensationModulePromise = import("./compensation/dashboard.js");
+      compensationModulePromise = import(`./compensation/dashboard.js${ASSET_VERSION}`);
     }
     return compensationModulePromise;
   };
@@ -137,7 +138,7 @@ async function main() {
   let partyMapModulePromise;
   const loadPartyMapModule = () => {
     if (!partyMapModulePromise) {
-      partyMapModulePromise = import("./map/dashboard.js");
+      partyMapModulePromise = import(`./map/dashboard.js${ASSET_VERSION}`);
     }
     return partyMapModulePromise;
   };
@@ -155,7 +156,7 @@ async function main() {
   let searchModulePromise;
   const loadSearchModule = () => {
     if (!searchModulePromise) {
-      searchModulePromise = import("./search/dashboard.js");
+      searchModulePromise = import(`./search/dashboard.js${ASSET_VERSION}`);
     }
     return searchModulePromise;
   };
@@ -175,7 +176,7 @@ async function main() {
   let winRateModulePromise;
   const loadWinRateModule = () => {
     if (!winRateModulePromise) {
-      winRateModulePromise = import("./win-rate/dashboard.js");
+      winRateModulePromise = import(`./win-rate/dashboard.js${ASSET_VERSION}`);
     }
     return winRateModulePromise;
   };
@@ -192,7 +193,7 @@ async function main() {
   let optimizationModulePromise;
   const loadOptimizationModule = () => {
     if (!optimizationModulePromise) {
-      optimizationModulePromise = import("./optimization/dashboard.js");
+      optimizationModulePromise = import(`./optimization/dashboard.js${ASSET_VERSION}`);
     }
     return optimizationModulePromise;
   };
