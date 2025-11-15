@@ -11,7 +11,7 @@ import {
 } from "./renderers.js";
 import { DATA_PATH } from "./constants.js";
 
-const ASSET_VERSION = "?v=20241103";
+const ASSET_VERSION = "?v=20241105";
 const PREFETCHED_RESOURCES = new Set();
 function scheduleIdleTask(callback, timeout = 2000) {
   if ("requestIdleCallback" in window) {
