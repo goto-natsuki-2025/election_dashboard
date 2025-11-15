@@ -208,29 +208,45 @@ function groupEventsByElection(events = []) {
         group.dateValue = timestamp;
       }
     }
+    if (!Array.isArray(group.parties)) {
+      group.parties = [];
+    }
     group.parties.push({
       party: event.party || "不明",
       candidates,
       winners,
-      ratio:
-        typeof event.ratio === "number"
-          ? event.ratio
-          : candidates > 0
-          ? winners / candidates
-          : null,
     });
   });
 
   return Array.from(groups.values()).map((group) => {
     const ratio =
       group.totalCandidates > 0 ? group.totalWinners / group.totalCandidates : null;
-    const topParty = group.parties
+    const partyAggregates = Array.isArray(group.parties)
+      ? group.parties.reduce((acc, entry) => {
+          const name = entry.party || "不明";
+          if (!acc.has(name)) {
+            acc.set(name, { party: name, candidates: 0, winners: 0 });
+          }
+          const info = acc.get(name);
+          info.candidates += entry.candidates ?? 0;
+          info.winners += entry.winners ?? 0;
+          return acc;
+        }, new Map())
+      : new Map();
+    const aggregatedParties = Array.from(partyAggregates.values()).map((entry) => ({
+      party: entry.party,
+      candidates: entry.candidates,
+      winners: entry.winners,
+      ratio: entry.candidates > 0 ? entry.winners / entry.candidates : null,
+    }));
+    const topParty = aggregatedParties
       .slice()
       .sort((a, b) => (b.winners ?? 0) - (a.winners ?? 0))[0] || null;
     return {
       ...group,
       ratio,
       topParty,
+      parties: aggregatedParties,
       searchLabel: group.electionKey.toLowerCase(),
     };
   });
