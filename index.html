@@ -357,75 +357,75 @@
             class="chart"
             aria-label="立候補者数と当選割合の散布図"
           ></div>
-        </section>
-        <section class="card">
-          <h2>自治体別の選挙検索</h2>
-          <p class="description">
-            得票の最適化ページと同様に、自治体ごとの選挙を検索できます。候補者数や当選割合で絞り込み、気になる自治体を素早く探してください。
-          </p>
-          <div class="optimization-search-panel" aria-label="自治体検索">
-            <form
-              id="win-rate-election-search"
-              class="optimization-search-form"
-              novalidate
-            >
-              <div class="optimization-search-group">
-                <label for="win-rate-search-text">自治体・選挙名</label>
-                <input
-                  type="text"
-                  id="win-rate-search-text"
-                  name="keyword"
-                  placeholder="例：八王子市議会議員選挙"
-                />
-              </div>
-              <div class="optimization-search-group">
-                <label for="win-rate-min-candidates">最小候補者数</label>
-                <input
-                  type="number"
-                  id="win-rate-min-candidates"
-                  name="minCandidates"
-                  min="0"
-                  step="1"
-                  inputmode="numeric"
-                />
-              </div>
-              <div class="optimization-search-group">
-                <label for="win-rate-min-ratio">最低当選割合 (%)</label>
-                <input
-                  type="number"
-                  id="win-rate-min-ratio"
-                  name="minRatio"
-                  min="0"
-                  max="100"
-                  step="1"
-                  inputmode="numeric"
-                />
-              </div>
-              <div class="optimization-search-actions">
-                <button type="button" id="win-rate-search-reset" class="button-secondary">
-                  条件をリセット
-                </button>
-              </div>
-            </form>
-          </div>
-          <div class="search-results-header">
-            <h3>検索結果</h3>
-            <p id="win-rate-election-count" class="search-results-count">0 件表示中</p>
-          </div>
-          <div class="search-table-wrapper">
-            <table class="search-table">
-              <thead>
-                <tr>
-                  <th scope="col">選挙名</th>
-                  <th scope="col">投票日</th>
-                  <th scope="col">候補者数</th>
-                  <th scope="col">当選者数</th>
-                  <th scope="col">当選割合</th>
-                  <th scope="col">主な政党</th>
-                </tr>
-              </thead>
-              <tbody id="win-rate-election-results"></tbody>
-            </table>
+          <div class="win-rate-search-block">
+            <h3>自治体別の選挙検索</h3>
+            <p class="description">
+              得票の最適化ページと同様に、自治体ごとの選挙を検索できます。候補者数や当選割合で絞り込み、気になる自治体を素早く探してください。
+            </p>
+            <div class="optimization-search-panel" aria-label="自治体検索">
+              <form
+                id="win-rate-election-search"
+                class="optimization-search-form"
+                novalidate
+              >
+                <div class="optimization-search-group">
+                  <label for="win-rate-search-text">自治体・選挙名</label>
+                  <input
+                    type="text"
+                    id="win-rate-search-text"
+                    name="keyword"
+                    placeholder="例：八王子市議会議員選挙"
+                  />
+                </div>
+                <div class="optimization-search-group">
+                  <label for="win-rate-min-candidates">最小候補者数</label>
+                  <input
+                    type="number"
+                    id="win-rate-min-candidates"
+                    name="minCandidates"
+                    min="0"
+                    step="1"
+                    inputmode="numeric"
+                  />
+                </div>
+                <div class="optimization-search-group">
+                  <label for="win-rate-min-ratio">最低当選割合 (%)</label>
+                  <input
+                    type="number"
+                    id="win-rate-min-ratio"
+                    name="minRatio"
+                    min="0"
+                    max="100"
+                    step="1"
+                    inputmode="numeric"
+                  />
+                </div>
+                <div class="optimization-search-actions">
+                  <button type="button" id="win-rate-search-reset" class="button-secondary">
+                    条件をリセット
+                  </button>
+                </div>
+              </form>
+            </div>
+            <div class="search-results-header">
+              <h3>検索結果</h3>
+              <p id="win-rate-election-count" class="search-results-count">0 件表示中</p>
+            </div>
+            <div class="search-table-wrapper">
+              <table class="search-table">
+                <thead>
+                  <tr>
+                    <th scope="col">選挙名</th>
+                    <th scope="col">投票日</th>
+                    <th scope="col">候補者数</th>
+                    <th scope="col">当選者数</th>
+                    <th scope="col">当選割合</th>
+                    <th scope="col">主な政党</th>
+                  </tr>
+                </thead>
+                <tbody id="win-rate-election-results"></tbody>
+              </table>
+            </div>
           </div>
         </section>
       </section>
