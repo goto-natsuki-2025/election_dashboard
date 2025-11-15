@@ -23,6 +23,30 @@ const REASON_LABELS = {
   no_party_data: "党別集計不可",
 };
 
+function ensureOptimizationHeaderElements() {
+  let titleElement = document.getElementById("optimization-election-title");
+  let noteElement = document.getElementById("optimization-min-vote-note");
+  if (titleElement && noteElement) {
+    return { titleElement, noteElement };
+  }
+  const analysisGrid = document.querySelector(".optimization-analysis-grid");
+  if (!analysisGrid || !analysisGrid.parentNode) {
+    return { titleElement, noteElement };
+  }
+  const header = document.createElement("div");
+  header.className = "optimization-figure-header";
+  titleElement = document.createElement("h3");
+  titleElement.id = "optimization-election-title";
+  titleElement.textContent = "党別理論最大と実際（全体）";
+  noteElement = document.createElement("p");
+  noteElement.id = "optimization-min-vote-note";
+  noteElement.className = "optimization-note";
+  noteElement.textContent = "最低当選得票数: -";
+  header.append(titleElement, noteElement);
+  analysisGrid.parentNode.insertBefore(header, analysisGrid);
+  return { titleElement, noteElement };
+}
+
 function renderSummary(summary) {
   const electionsEl = document.getElementById("optimization-summary-elections");
   const excludedEl = document.getElementById("optimization-summary-excluded");
@@ -185,25 +209,27 @@ function renderElectionTable(elections) {
 
 function initPartyComparisonChart(parties, limit = 10) {
   const container = document.getElementById("optimization-election-chart");
+  const { titleElement } = ensureOptimizationHeaderElements();
   if (!container) return null;
   const chart = echarts.init(container, undefined, { renderer: "svg" });
 
-  const applyOption = (title, categories, potentials, actuals) => {
+  const setTitle = (text) => {
+    if (titleElement) {
+      titleElement.textContent = text;
+    }
+  };
+
+  const applyOption = (categories, potentials, actuals) => {
     const hasData = categories.length > 0;
     chart.setOption({
-      title: {
-        text: title,
-        left: "center",
-        top: 0,
-        textStyle: { fontSize: 16, fontWeight: 600, color: "#0f172a" },
-      },
+      title: { show: false, text: "" },
       tooltip: {
         trigger: "axis",
         axisPointer: { type: "shadow" },
         valueFormatter: (value) => `${formatNumber(Number(value))} 議席`,
       },
-      legend: { top: 36 },
-      grid: { top: 86, left: 92, right: 16, bottom: 24 },
+      legend: { top: 20 },
+      grid: { top: 64, left: 92, right: 16, bottom: 24 },
       xAxis: {
         type: "value",
         axisLabel: {
@@ -271,7 +297,8 @@ function initPartyComparisonChart(parties, limit = 10) {
 
   const showOverall = () => {
     if (!Array.isArray(parties) || parties.length === 0) {
-      applyOption("党別理論最大と実際（全体）", [], [], []);
+      setTitle("党別理論最大と実際（全体）");
+      applyOption([], [], []);
       renderElectionDetailTable(null);
       return;
     }
@@ -281,7 +308,8 @@ function initPartyComparisonChart(parties, limit = 10) {
     const categories = topParties.map((party) => party.party || "不明");
     const potentials = topParties.map((party) => party.potentialWinners ?? 0);
     const actuals = topParties.map((party) => party.actualWinners ?? 0);
-    applyOption("党別理論最大と実際（全体）", categories, potentials, actuals);
+    setTitle("党別理論最大と実際（全体）");
+    applyOption(categories, potentials, actuals);
     renderElectionDetailTable(null);
   };
 
@@ -306,7 +334,8 @@ function initPartyComparisonChart(parties, limit = 10) {
     const title = titleDate
       ? `${election.electionKey}（${titleDate}）`
       : `${election.electionKey}`;
-    applyOption(title, categories, potentials, actuals);
+    setTitle(title);
+    applyOption(categories, potentials, actuals);
     renderElectionDetailTable(election);
   };
 
@@ -486,7 +515,7 @@ export async function initVoteOptimizationDashboard() {
 }
 function renderElectionDetailTable(election) {
   const tbody = document.getElementById("optimization-election-detail");
-  const minNote = document.getElementById("optimization-min-vote-note");
+  const { noteElement: minNote } = ensureOptimizationHeaderElements();
   if (minNote) {
     const minVote = election?.minWinningVote ?? null;
     minNote.textContent = minVote
