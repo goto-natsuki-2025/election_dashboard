@@ -18,7 +18,7 @@
 .search-summary-grid {
   display: grid;
   gap: 16px;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr));
 }
 
 .search-summary-item {
@@ -47,7 +47,7 @@
 .search-filters {
   display: grid;
   gap: 16px;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
   align-items: end;
 }
 
@@ -79,6 +79,13 @@
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+@media (max-width: 520px) {
+  .search-summary-grid,
+  .search-filters {
+    grid-template-columns: 1fr;
+  }
 }
 
 .search-date-range {
