@@ -422,50 +422,101 @@
           <p class="description">
             選挙ごとに理論最大と実際の当選数を比較できます。上位のグラフで党別の差分を確認し、下部の検索で個別選挙を探してください。
           </p>
+          <div class="optimization-figure-header">
+            <h3 id="optimization-election-title">党別理論最大と実際（全体）</h3>
+            <p id="optimization-min-vote-note" class="optimization-note">最低当選得票数: -</p>
+          </div>
           <div class="optimization-analysis-grid">
             <div id="optimization-election-chart" class="chart optimization-chart" aria-label="党別理論最大と実際の当選数"></div>
             <div class="search-table-wrapper optimization-detail-table">
-              <p id="optimization-min-vote-note" class="optimization-note"></p>
               <table class="search-table">
                 <thead>
                   <tr>
                     <th scope="col">党派</th>
-                    <th scope="col">実数</th>
                     <th scope="col">総得票数</th>
                     <th scope="col">総得票数 / 最低得票</th>
                     <th scope="col">理論最大</th>
+                    <th scope="col">実数</th>
                   </tr>
                 </thead>
                 <tbody id="optimization-election-detail"></tbody>
               </table>
             </div>
           </div>
-          <form id="optimization-search-form" class="optimization-search-form" aria-label="選挙検索" novalidate>
-            <div class="optimization-search-group">
-              <label for="optimization-search-keyword">選挙名</label>
-              <input type="text" id="optimization-search-keyword" name="keyword" placeholder="例：○○市議会議員選挙" />
+          <div class="optimization-search-panel" aria-label="ギャップ検索">
+            <form
+              id="optimization-search-form"
+              class="optimization-search-form"
+              aria-label="選挙検索"
+              novalidate
+            >
+              <div class="optimization-search-group">
+                <label for="optimization-search-keyword">選挙名</label>
+                <input
+                  type="text"
+                  id="optimization-search-keyword"
+                  name="keyword"
+                  placeholder="例：○○市議会議員選挙"
+                />
+              </div>
+              <div class="optimization-search-group">
+                <span class="optimization-search-label">選挙種別</span>
+                <div class="optimization-scope-options" role="radiogroup" aria-label="選挙種別">
+                  <label>
+                    <input
+                      type="radio"
+                      name="optimization-scope"
+                      value="all"
+                      checked
+                    />
+                    <span>すべて</span>
+                  </label>
+                  <label>
+                    <input
+                      type="radio"
+                      name="optimization-scope"
+                      value="municipal"
+                    />
+                    <span>市区町村議会選挙</span>
+                  </label>
+                  <label>
+                    <input
+                      type="radio"
+                      name="optimization-scope"
+                      value="prefectural"
+                    />
+                    <span>都道府県議会選挙</span>
+                  </label>
+                  <label>
+                    <input
+                      type="radio"
+                      name="optimization-scope"
+                      value="other"
+                    />
+                    <span>その他</span>
+                  </label>
+                </div>
+              </div>
+              <div class="optimization-search-actions">
+                <button type="button" id="optimization-search-reset" class="button-secondary">
+                  条件をリセット
+                </button>
+              </div>
+            </form>
+            <div class="search-table-wrapper">
+              <table class="search-table">
+                <thead>
+                  <tr>
+                    <th scope="col">選挙名</th>
+                    <th scope="col">日付</th>
+                    <th scope="col">当選者数</th>
+                    <th scope="col">最低当選得票</th>
+                    <th scope="col">ギャップ</th>
+                  </tr>
+                </thead>
+                <tbody id="optimization-search-results"></tbody>
+              </table>
             </div>
-            <div class="optimization-search-group">
-              <label for="optimization-search-min-gap">最小ギャップ</label>
-              <input type="number" id="optimization-search-min-gap" name="minGap" min="0" step="1" inputmode="numeric" />
-            </div>
-            <div class="optimization-search-actions">
-              <button type="button" id="optimization-search-reset" class="button-secondary">条件をリセット</button>
-            </div>
-          </form>
-          <div class="search-table-wrapper">
-            <table class="search-table">
-              <thead>
-                <tr>
-                  <th scope="col">選挙名</th>
-                  <th scope="col">日付</th>
-                  <th scope="col">当選者数</th>
-                  <th scope="col">最低当選得票</th>
-                  <th scope="col">ギャップ</th>
-                </tr>
-              </thead>
-              <tbody id="optimization-search-results"></tbody>
-            </table>
           </div>
         </section>
 
@@ -622,7 +673,7 @@
       integrity="sha384-vpn/ucn7785xAq02KoJV78mMCB+FXl+yfBWS2MRjZkzEEvUEsJU3ZarsOD9MSGxu"
       crossorigin="anonymous"
     ></script>
-    <script type="module" src="assets/js/main.js"></script>
+    <script type="module" src="assets/js/main.js?v=20241103"></script>
   </body>
 </html>
 

@@ -15,6 +15,18 @@ const formatPercent = (value) => {
   return `${(value * 100).toFixed(1)}%`;
 };
 
+const detectElectionScope = (text = "") => {
+  const normalized = text.trim();
+  if (!normalized) return "other";
+  if (/(都|道|府|県)議会議員(?:補欠)?選挙/u.test(normalized)) {
+    return "prefectural";
+  }
+  if (/((市|区|町|村))議会議員(?:補欠)?選挙/u.test(normalized)) {
+    return "municipal";
+  }
+  return "other";
+};
+
 const REASON_LABELS = {
   executive_election: "首長選挙",
   no_winners: "当選者なし",
@@ -22,6 +34,30 @@ const REASON_LABELS = {
   invalid_min_vote: "最低得票の算出不可",
   no_party_data: "党別集計不可",
 };
+
+function ensureOptimizationHeaderElements() {
+  let titleElement = document.getElementById("optimization-election-title");
+  let noteElement = document.getElementById("optimization-min-vote-note");
+  if (titleElement && noteElement) {
+    return { titleElement, noteElement };
+  }
+  const analysisGrid = document.querySelector(".optimization-analysis-grid");
+  if (!analysisGrid || !analysisGrid.parentNode) {
+    return { titleElement, noteElement };
+  }
+  const header = document.createElement("div");
+  header.className = "optimization-figure-header";
+  titleElement = document.createElement("h3");
+  titleElement.id = "optimization-election-title";
+  titleElement.textContent = "党別理論最大と実際（全体）";
+  noteElement = document.createElement("p");
+  noteElement.id = "optimization-min-vote-note";
+  noteElement.className = "optimization-note";
+  noteElement.textContent = "最低当選得票数: -";
+  header.append(titleElement, noteElement);
+  analysisGrid.parentNode.insertBefore(header, analysisGrid);
+  return { titleElement, noteElement };
+}
 
 function renderSummary(summary) {
   const electionsEl = document.getElementById("optimization-summary-elections");
@@ -57,7 +93,7 @@ function renderSummary(summary) {
   }
 }
 
-function renderSummaryBoard(parties, limit = 10) {
+function renderSummaryBoard(parties, limit = 8) {
   const container = document.getElementById("optimization-summary-board");
   if (!container) return;
   container.innerHTML = "";
@@ -185,25 +221,27 @@ function renderElectionTable(elections) {
 
 function initPartyComparisonChart(parties, limit = 10) {
   const container = document.getElementById("optimization-election-chart");
+  const { titleElement } = ensureOptimizationHeaderElements();
   if (!container) return null;
   const chart = echarts.init(container, undefined, { renderer: "svg" });
 
-  const applyOption = (title, categories, potentials, actuals) => {
+  const setTitle = (text) => {
+    if (titleElement) {
+      titleElement.textContent = text;
+    }
+  };
+
+  const applyOption = (categories, potentials, actuals) => {
     const hasData = categories.length > 0;
     chart.setOption({
-      title: {
-        text: title,
-        left: "center",
-        top: 0,
-        textStyle: { fontSize: 16, fontWeight: 600, color: "#0f172a" },
-      },
+      title: { show: false, text: "" },
       tooltip: {
         trigger: "axis",
         axisPointer: { type: "shadow" },
         valueFormatter: (value) => `${formatNumber(Number(value))} 議席`,
       },
-      legend: { top: 36 },
-      grid: { top: 86, left: 92, right: 16, bottom: 24 },
+      legend: { top: 20 },
+      grid: { top: 64, left: 92, right: 16, bottom: 24 },
       xAxis: {
         type: "value",
         axisLabel: {
@@ -271,7 +309,8 @@ function initPartyComparisonChart(parties, limit = 10) {
 
   const showOverall = () => {
     if (!Array.isArray(parties) || parties.length === 0) {
-      applyOption("党別理論最大と実際（全体）", [], [], []);
+      setTitle("党別理論最大と実際（全体）");
+      applyOption([], [], []);
       renderElectionDetailTable(null);
       return;
     }
@@ -281,7 +320,8 @@ function initPartyComparisonChart(parties, limit = 10) {
     const categories = topParties.map((party) => party.party || "不明");
     const potentials = topParties.map((party) => party.potentialWinners ?? 0);
     const actuals = topParties.map((party) => party.actualWinners ?? 0);
-    applyOption("党別理論最大と実際（全体）", categories, potentials, actuals);
+    setTitle("党別理論最大と実際（全体）");
+    applyOption(categories, potentials, actuals);
     renderElectionDetailTable(null);
   };
 
@@ -306,7 +346,8 @@ function initPartyComparisonChart(parties, limit = 10) {
     const title = titleDate
       ? `${election.electionKey}（${titleDate}）`
       : `${election.electionKey}`;
-    applyOption(title, categories, potentials, actuals);
+    setTitle(title);
+    applyOption(categories, potentials, actuals);
     renderElectionDetailTable(election);
   };
 
@@ -321,23 +362,23 @@ function initPartyComparisonChart(parties, limit = 10) {
   };
 }
 
-function filterElectionResults(elections, { keyword, minGap }) {
+function filterElectionResults(elections, { keyword, scope }) {
   if (!Array.isArray(elections)) {
     return [];
   }
   const rows = [];
   const keywordText = keyword?.trim().toLowerCase() ?? "";
-  const minGapValue = Number.isFinite(minGap) && minGap > 0 ? minGap : 0;
+  const scopeFilter = scope && scope !== "all" ? scope : null;
 
   elections.forEach((entry) => {
     const electionName = entry.electionKey || "";
     if (keywordText && !electionName.toLowerCase().includes(keywordText)) {
       return;
     }
-    const gap = Math.max(entry.totalGap ?? 0, 0);
-    if (gap < minGapValue) {
+    if (scopeFilter && entry.scope !== scopeFilter) {
       return;
     }
+    const gap = Math.max(entry.totalGap ?? 0, 0);
     const dateLabel = formatDate(entry.electionDate);
     rows.push({
       election: entry,
@@ -399,15 +440,15 @@ function renderSearchResults(rows, { onSelect, activeIndex = -1 } = {}) {
 function setupElectionSearch(elections, chartController) {
   const form = document.getElementById("optimization-search-form");
   const keywordInput = document.getElementById("optimization-search-keyword");
-  const minGapInput = document.getElementById("optimization-search-min-gap");
+  const scopeInputs = Array.from(document.querySelectorAll('input[name="optimization-scope"]'));
   const resetButton = document.getElementById("optimization-search-reset");
-  if (!form || !keywordInput || !minGapInput || !resetButton) {
+  if (!form || !keywordInput || scopeInputs.length === 0 || !resetButton) {
     return;
   }
 
   const state = {
     keyword: "",
-    minGap: 0,
+    scope: scopeInputs.find((input) => input.checked)?.value ?? "all",
   };
   let displayedRows = [];
   let activeIndex = -1;
@@ -449,20 +490,31 @@ function setupElectionSearch(elections, chartController) {
 
   const handleInputChange = debounce(() => {
     state.keyword = keywordInput.value;
-    const parsed = Number(minGapInput.value);
-    state.minGap = Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
     chartController?.showOverall();
     update(false);
   });
 
   keywordInput.addEventListener("input", handleInputChange);
-  minGapInput.addEventListener("input", handleInputChange);
+
+  scopeInputs.forEach((input) => {
+    input.addEventListener("change", () => {
+      if (input.checked) {
+        state.scope = input.value;
+        chartController?.showOverall();
+        update(false);
+      }
+    });
+  });
 
   resetButton.addEventListener("click", () => {
     keywordInput.value = "";
-    minGapInput.value = "";
+    scopeInputs.forEach((input) => {
+      input.checked = input.value === "all";
+      if (input.checked) {
+        state.scope = input.value;
+      }
+    });
     state.keyword = "";
-    state.minGap = 0;
     chartController?.showOverall();
     update(false);
   });
@@ -475,9 +527,12 @@ export async function initVoteOptimizationDashboard() {
   renderSummary(data.summary);
   renderSummaryBoard(data.parties);
   const chartController = initPartyComparisonChart(data.parties);
-  setupElectionSearch(data.elections, chartController);
+  const scopedElections = Array.isArray(data.elections)
+    ? data.elections.map((entry) => ({ ...entry, scope: detectElectionScope(entry.electionKey || "") }))
+    : [];
+  setupElectionSearch(scopedElections, chartController);
   renderPartyTable(data.parties);
-  renderElectionTable(data.elections);
+  renderElectionTable(scopedElections);
   return {
     resize() {
       chartController?.resize?.();
@@ -486,7 +541,7 @@ export async function initVoteOptimizationDashboard() {
 }
 function renderElectionDetailTable(election) {
   const tbody = document.getElementById("optimization-election-detail");
-  const minNote = document.getElementById("optimization-min-vote-note");
+  const { noteElement: minNote } = ensureOptimizationHeaderElements();
   if (minNote) {
     const minVote = election?.minWinningVote ?? null;
     minNote.textContent = minVote
@@ -514,10 +569,10 @@ function renderElectionDetailTable(election) {
       const row = document.createElement("tr");
       row.innerHTML = `
         <td>${result.party || "不明"}</td>
-        <td class="numeric">${formatNumber(result.actualWinners ?? 0)}</td>
         <td class="numeric">${formatNumber(totalVotes)}</td>
         <td class="numeric">${ratio === null ? "-" : ratio.toFixed(2)}</td>
         <td class="numeric">${formatNumber(result.potentialWinners ?? 0)}</td>
+        <td class="numeric">${formatNumber(result.actualWinners ?? 0)}</td>
       `;
       tbody.appendChild(row);
     });
