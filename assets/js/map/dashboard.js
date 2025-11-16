@@ -17,6 +17,16 @@ const COLOR_PALETTE = [
   "#1d4ed8",
 ];
 
+const DATA_STATUS = {
+  OK: "ok",
+  MISSING: "missing",
+  EXPIRED: "expired",
+};
+
+const DATA_STATUS_COLORS = {
+  [DATA_STATUS.MISSING]: "rgba(248, 113, 113, 0.65)",
+};
+
 const MAP_METRICS = {
   RATIO: "ratio",
   SEATS: "seats",
@@ -204,10 +214,19 @@ function applyEventToState(state, event, termYears) {
   });
 }
 
-function removeExpiredEntriesFromState(state, year) {
+function removeExpiredEntriesFromState(state, year, { collector = null, keepExpired = false } = {}) {
   const cutoff = new Date(year + 1, 0, 1).getTime();
   for (const [municipalityKey, entry] of state.events.entries()) {
     if (!entry.expiresAt || entry.expiresAt.getTime() >= cutoff) continue;
+    if (Array.isArray(collector)) {
+      collector.push({
+        municipalityKey,
+        prefectureCode: entry.prefectureCode,
+      });
+    }
+    if (keepExpired) {
+      continue;
+    }
     state.events.delete(municipalityKey);
     subtractEntryFromState(state, entry);
   }
@@ -720,6 +739,7 @@ function aggregatePartySeatsByYear(candidates, { termYears = TERM_YEARS } = {}) 
       partyShareByYear: new Map(),
       partyTotalsByYear: new Map(),
       municipalitiesByYear: new Map(),
+      expiredMunicipalitiesByYear: new Map(),
     },
   };
 
@@ -738,10 +758,15 @@ function aggregatePartySeatsByYear(candidates, { termYears = TERM_YEARS } = {}) 
       eventIndex += 1;
     }
 
+    const municipalExpired = [];
     Object.values(COUNCIL_TYPES).forEach((type) => {
       const state = statesByType[type];
       if (!state) return;
-      removeExpiredEntriesFromState(state, year);
+      const options =
+        type === COUNCIL_TYPES.MUNICIPAL
+          ? { collector: municipalExpired, keepExpired: true }
+          : undefined;
+      removeExpiredEntriesFromState(state, year, options);
     });
 
     Object.values(COUNCIL_TYPES).forEach((type) => {
@@ -757,6 +782,9 @@ function aggregatePartySeatsByYear(candidates, { termYears = TERM_YEARS } = {}) 
       if (snapshot.municipalities && resultContainer.municipalitiesByYear) {
         resultContainer.municipalitiesByYear.set(year, snapshot.municipalities);
       }
+      if (type === COUNCIL_TYPES.MUNICIPAL && resultContainer.expiredMunicipalitiesByYear) {
+        resultContainer.expiredMunicipalitiesByYear.set(year, municipalExpired);
+      }
     });
   }
 
@@ -769,7 +797,7 @@ function aggregatePartySeatsByYear(candidates, { termYears = TERM_YEARS } = {}) 
   };
 }
 
-function buildFeatureCollection(baseFeatures, partyMetrics, totalsByRegion) {
+function buildFeatureCollection(baseFeatures, partyMetrics, totalsByRegion, statusByRegion = new Map()) {
   return {
     type: "FeatureCollection",
     features: baseFeatures.map((feature) => {
@@ -782,7 +810,20 @@ function buildFeatureCollection(baseFeatures, partyMetrics, totalsByRegion) {
       const hasTotal =
         Number.isFinite(totalValue) && totalValue !== null && Number(totalValue) >= 0;
       const totalSeats = hasTotal ? Number(totalValue) : 0;
-      const dataError = !hasTotal || totalSeats <= 0;
+
+      // Determine data status:
+      // - ok: totals present and > 0
+      // - expired: term expired,次回更新待ち
+      // - missing: データなし
+      const statusFromMap =
+        statusByRegion instanceof Map ? statusByRegion.get(normaliseString(regionId)) : null;
+      let dataStatus = statusFromMap ?? DATA_STATUS.MISSING;
+      if (hasTotal && totalSeats > 0) {
+        dataStatus = statusFromMap === DATA_STATUS.EXPIRED ? DATA_STATUS.EXPIRED : DATA_STATUS.OK;
+      } else if (statusFromMap === DATA_STATUS.EXPIRED) {
+        dataStatus = DATA_STATUS.EXPIRED;
+      }
+      const dataError = dataStatus === DATA_STATUS.MISSING;
       return {
         ...feature,
         properties: {
@@ -791,13 +832,21 @@ function buildFeatureCollection(baseFeatures, partyMetrics, totalsByRegion) {
           party_seats: metrics?.seats ?? 0,
           total_seats: totalSeats,
           data_error: dataError,
+          data_status: dataStatus,
         },
       };
     }),
   };
 }
 
-function applyMetricsToSource(map, sourceId, partyMetrics, totalsByRegion, previousRegionIds = new Set()) {
+function applyMetricsToSource(
+  map,
+  sourceId,
+  partyMetrics,
+  totalsByRegion,
+  statusByRegion = new Map(),
+  previousRegionIds = new Set(),
+) {
   if (!map || !sourceId) {
     return { regionIds: new Set(), hasError: false };
   }
@@ -807,6 +856,7 @@ function applyMetricsToSource(map, sourceId, partyMetrics, totalsByRegion, previ
     party_seats: 0,
     total_seats: 0,
     data_error: true,
+    data_status: DATA_STATUS.MISSING,
   };
   const nextRegionIds = new Set();
   let hasError = false;
@@ -820,6 +870,12 @@ function applyMetricsToSource(map, sourceId, partyMetrics, totalsByRegion, previ
   }
   if (totalsByRegion instanceof Map) {
     totalsByRegion.forEach((_, key) => {
+      const regionId = normaliseKey(key);
+      if (regionId) keys.add(regionId);
+    });
+  }
+  if (statusByRegion instanceof Map) {
+    statusByRegion.forEach((_, key) => {
       const regionId = normaliseKey(key);
       if (regionId) keys.add(regionId);
     });
@@ -843,17 +899,25 @@ function applyMetricsToSource(map, sourceId, partyMetrics, totalsByRegion, previ
       ratioValue = totalSeats > 0 ? seats / totalSeats : 0;
     }
     const ratio = hasTotal && Number.isFinite(ratioValue) ? Math.max(0, Math.min(ratioValue, 1)) : 0;
-    const state = hasTotal
-      ? {
-          party_ratio: ratio,
-          party_seats: seats,
-          total_seats: totalSeats,
-          data_error: false,
-        }
-      : {
-          ...defaultState,
-        };
-    if (state.data_error) {
+    const statusFromMap =
+      statusByRegion instanceof Map ? statusByRegion.get(regionId) ?? null : null;
+      let dataStatus = statusFromMap ?? DATA_STATUS.MISSING;
+      let dataError = true;
+      if (hasTotal && totalSeats > 0) {
+        dataStatus = statusFromMap === DATA_STATUS.EXPIRED ? DATA_STATUS.EXPIRED : DATA_STATUS.OK;
+        dataError = false;
+      } else if (statusFromMap === DATA_STATUS.EXPIRED) {
+        dataStatus = DATA_STATUS.EXPIRED;
+        dataError = false;
+      }
+    const state = {
+      party_ratio: ratio,
+      party_seats: seats,
+      total_seats: totalSeats,
+      data_error: dataError,
+      data_status: dataStatus,
+    };
+    if (dataError) {
       hasError = true;
     }
     map.setFeatureState({ source: sourceId, id: regionId }, state);
@@ -914,16 +978,10 @@ function buildColorExpression(stops, metric = MAP_METRICS.RATIO) {
   for (const stop of stops) {
     baseExpression.push(stop.value, stop.color);
   }
-  const dataErrorExpression = [
-    "coalesce",
-    ["feature-state", "data_error"],
-    ["get", "data_error"],
-    false,
-  ];
   return [
     "case",
-    ["==", dataErrorExpression, true],
-    "rgba(248, 113, 113, 0.65)",
+    ["==", ["coalesce", ["feature-state", "data_status"], ["get", "data_status"], DATA_STATUS.OK], DATA_STATUS.MISSING],
+    DATA_STATUS_COLORS[DATA_STATUS.MISSING],
     baseExpression,
   ];
 }
@@ -1321,7 +1379,7 @@ export async function initPartyMapDashboard({ candidates }) {
     if (municipalYearCache.has(cacheKey)) {
       return municipalYearCache.get(cacheKey);
     }
-    const emptyResult = { totals: new Map(), partySeats: new Map() };
+    const emptyResult = { totals: new Map(), partySeats: new Map(), statusByRegion: new Map() };
     if (!municipalContainer || !resource) {
       municipalYearCache.set(cacheKey, emptyResult);
       return emptyResult;
@@ -1333,6 +1391,21 @@ export async function initPartyMapDashboard({ candidates }) {
     }
     const totals = new Map();
     const partySeats = new Map();
+    const statusByRegion = new Map();
+    const expiredEntries = municipalContainer.expiredMunicipalitiesByYear?.get?.(year) ?? [];
+    if (Array.isArray(expiredEntries)) {
+      for (const expired of expiredEntries) {
+        const codeRaw = resolveMunicipalityCode(
+          normaliseString(expired?.prefectureCode ?? ""),
+          expired?.municipalityKey,
+          resource.patternIndex,
+        );
+        const code = normaliseString(codeRaw);
+        if (code) {
+          statusByRegion.set(code, DATA_STATUS.EXPIRED);
+        }
+      }
+    }
     rawYear.forEach((entry, municipalityKey) => {
       if (!entry) return;
       const codeRaw = resolveMunicipalityCode(
@@ -1359,7 +1432,7 @@ export async function initPartyMapDashboard({ candidates }) {
         });
       }
     });
-    const result = { totals, partySeats };
+    const result = { totals, partySeats, statusByRegion };
     municipalYearCache.set(cacheKey, result);
     return result;
   };
@@ -1458,6 +1531,14 @@ export async function initPartyMapDashboard({ candidates }) {
     const container = getAggregationForMode(mode);
     const map = container?.totalsByYearPrefecture?.get?.(year);
     return map instanceof Map ? map : new Map();
+  };
+
+  const getStatusFor = (mode, year) => {
+    if (mode === COUNCIL_TYPES.MUNICIPAL) {
+      const dataset = resolveMunicipalYearData(year);
+      return dataset.statusByRegion ?? new Map();
+    }
+    return new Map();
   };
 
   try {
@@ -1603,9 +1684,17 @@ export async function initPartyMapDashboard({ candidates }) {
   const geometryForMode = getGeometryForMode(state.mode, state.year);
   const initialMetrics = getMetricsFor(state.mode, state.year, state.party);
   const initialTotals = getTotalsFor(state.mode, state.year);
-  const initialData = buildFeatureCollection(geometryForMode.features, initialMetrics, initialTotals);
+  const initialStatus = getStatusFor(state.mode, state.year);
+  const initialData = buildFeatureCollection(
+    geometryForMode.features,
+    initialMetrics,
+    initialTotals,
+    initialStatus,
+  );
   const initialHasError = Array.isArray(initialData?.features)
-    ? initialData.features.some((feature) => feature?.properties?.data_error)
+    ? initialData.features.some(
+        (feature) => feature?.properties?.data_status === DATA_STATUS.MISSING,
+      )
     : false;
   const initialStops = computeColorStops(initialMetrics, state.metric);
   const initialLegendItems =
@@ -1614,7 +1703,7 @@ export async function initPartyMapDashboard({ candidates }) {
       : [];
   if (initialHasError) {
     initialLegendItems.unshift({
-      color: "rgba(248, 113, 113, 0.65)",
+      color: DATA_STATUS_COLORS[DATA_STATUS.MISSING],
       label: "欠損",
     });
   }
@@ -1705,11 +1794,12 @@ export async function initPartyMapDashboard({ candidates }) {
     const geometry = getGeometryForMode(mode, year);
     const metrics = getMetricsFor(mode, year, party);
     const totals = getTotalsFor(mode, year);
+    const statusByRegion = getStatusFor(mode, year);
     const source = map.getSource("regions");
     let hasDataError = false;
     if (source) {
       if (geometry !== currentGeometry) {
-        const nextData = buildFeatureCollection(geometry.features, metrics, totals);
+        const nextData = buildFeatureCollection(geometry.features, metrics, totals, statusByRegion);
         source.setData(nextData);
         currentGeometry = geometry;
         activeRegionIds = new Set();
@@ -1719,14 +1809,22 @@ export async function initPartyMapDashboard({ candidates }) {
         "regions",
         metrics instanceof Map ? metrics : new Map(),
         totals instanceof Map ? totals : new Map(),
+        statusByRegion instanceof Map ? statusByRegion : new Map(),
         activeRegionIds,
       );
       activeRegionIds = result.regionIds;
       hasDataError = result.hasError;
     } else {
-      const fallbackData = buildFeatureCollection(geometry.features, metrics, totals);
+      const fallbackData = buildFeatureCollection(
+        geometry.features,
+        metrics,
+        totals,
+        statusByRegion,
+      );
       hasDataError = Array.isArray(fallbackData?.features)
-        ? fallbackData.features.some((feature) => feature?.properties?.data_error)
+        ? fallbackData.features.some(
+            (feature) => feature?.properties?.data_status === DATA_STATUS.MISSING,
+          )
         : true;
       currentGeometry = geometry;
       activeRegionIds = new Set();
@@ -1753,12 +1851,15 @@ export async function initPartyMapDashboard({ candidates }) {
         mode === COUNCIL_TYPES.MUNICIPAL ? "visible" : "none",
       );
     }
-    if (
-      Array.isArray(geometry.features) &&
-      totals instanceof Map &&
-      totals.size < geometry.features.length
-    ) {
-      hasDataError = true;
+    if (Array.isArray(geometry.features)) {
+      const expiredCount =
+        statusByRegion instanceof Map
+          ? Array.from(statusByRegion.values()).filter((value) => value === DATA_STATUS.EXPIRED)
+              .length
+          : 0;
+      if (totals instanceof Map && totals.size + expiredCount < geometry.features.length) {
+        hasDataError = true;
+      }
     }
 
     const legendItems =
@@ -1766,7 +1867,7 @@ export async function initPartyMapDashboard({ candidates }) {
     const displayParty = party || "該当党派なし";
     if (hasDataError) {
       legendItems.unshift({
-        color: "rgba(248, 113, 113, 0.65)",
+        color: DATA_STATUS_COLORS[DATA_STATUS.MISSING],
         label: "欠損",
       });
     }
@@ -1898,13 +1999,18 @@ export async function initPartyMapDashboard({ candidates }) {
       const total = Number.isFinite(Number(stateValues.total_seats))
         ? Number(stateValues.total_seats)
         : Number(feature.properties?.total_seats ?? 0);
-      const hasError =
-        typeof stateValues.data_error === "boolean"
-          ? stateValues.data_error
-          : Boolean(feature.properties?.data_error);
-      const detailText = hasError
-        ? "欠損"
-        : formatTooltipDetail(state.metric, { ratio, seats, total });
+      const dataStatus =
+        stateValues.data_status ??
+        feature.properties?.data_status ??
+        (typeof stateValues.data_error === "boolean" && stateValues.data_error
+          ? DATA_STATUS.MISSING
+          : DATA_STATUS.OK);
+      const detailText =
+        dataStatus === DATA_STATUS.MISSING
+          ? "欠損"
+          : dataStatus === DATA_STATUS.EXPIRED
+            ? `${formatTooltipDetail(state.metric, { ratio, seats, total })}（任期満了待ち）`
+            : formatTooltipDetail(state.metric, { ratio, seats, total });
       tooltip.hidden = false;
       tooltip.innerHTML = `
         <strong>${regionName}</strong>
