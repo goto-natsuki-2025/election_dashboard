@@ -1966,6 +1966,8 @@ export async function initPartyMapDashboard({ candidates }) {
 
   const excludeIndependentControl = root.querySelector(`#${EXCLUDE_INDEPENDENT_CONTROL_ID}`);
 
+  const partyControlGroup = root.querySelector("#choropleth-party-group");
+
   const state = {
     metric: initialMetric,
     mode: prepareScopeSelect(scopeSelect, scopeOptions, COUNCIL_TYPES.COMBINED),
@@ -2007,6 +2009,15 @@ export async function initPartyMapDashboard({ candidates }) {
     excludeIndependentControl.checked = Boolean(state.excludeIndependents);
   };
 
+  const syncPartyControl = () => {
+    if (!partyControlGroup) return;
+    const isTopParty = normalizeMetric(state.metric) === MAP_METRICS.TOP_PARTY;
+    partyControlGroup.classList.toggle("is-hidden", isTopParty);
+    if (partySelect) {
+      partySelect.disabled = isTopParty;
+    }
+  };
+
   const syncMetricControls = () => {
     metricInputs.forEach((input) => {
       const metricValue = getMetricFromInput(input);
@@ -2022,6 +2033,7 @@ export async function initPartyMapDashboard({ candidates }) {
       }
     });
     syncExcludeControl();
+    syncPartyControl();
   };
   syncMetricControls();
 
