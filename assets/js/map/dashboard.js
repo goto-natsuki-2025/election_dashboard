@@ -2405,9 +2405,6 @@ export async function initPartyMapDashboard({ candidates }) {
       if (dataStatus === DATA_STATUS.MISSING) {
         lines.push(`<span>欠損</span>`);
       } else if (metricType === MAP_METRICS.TOP_PARTY && dataTopParty) {
-        const parties = Array.isArray(dataTopParty.parties)
-          ? dataTopParty.parties.join("・")
-          : "";
         const topSeats = Number(dataTopParty.seats ?? seats);
         const topTotal = Number(dataTopParty.total ?? total);
         const topRatio =
@@ -2419,12 +2416,21 @@ export async function initPartyMapDashboard({ candidates }) {
         if (topPartyKey === INDEPENDENT_ONLY_KEY) {
           lines.push(`<span>該当なし（無所属のみ）</span>`);
         } else {
+          const partyNames = Array.isArray(dataTopParty.parties)
+            ? dataTopParty.parties.filter(Boolean)
+            : [];
           const topDetail = formatTooltipDetail(MAP_METRICS.RATIO, {
             ratio: topRatio,
             seats: topSeats,
             total: topTotal,
           });
-          lines.push(`<span>最大会派: ${parties || "―"} ${topDetail}</span>`);
+          if (partyNames.length > 0) {
+            partyNames.forEach((p) => {
+              lines.push(`<span>${p} ${topDetail}</span>`);
+            });
+          } else {
+            lines.push(`<span>${topDetail}</span>`);
+          }
         }
       } else {
         const detailText = formatTooltipDetail(metricType, { ratio, seats, total });
