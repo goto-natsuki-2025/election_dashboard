@@ -11,7 +11,8 @@ import {
 } from "./renderers.js";
 import { DATA_PATH } from "./constants.js";
 
-const ASSET_VERSION = "?v=20241105";
+// Bump to invalidate cached modules when map logic changes (e.g., legacy municipal geometry year extension).
+const ASSET_VERSION = "?v=20241107";
 const PREFETCHED_RESOURCES = new Set();
 function scheduleIdleTask(callback, timeout = 2000) {
   if ("requestIdleCallback" in window) {
