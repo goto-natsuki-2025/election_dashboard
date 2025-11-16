@@ -43,6 +43,7 @@ const INDEPENDENT_NAME = "無所属";
 const INDEPENDENT_ONLY_KEY = "__independent_only";
 const INDEPENDENT_ONLY_COLOR = "#cbd5e1";
 const EXCLUDE_INDEPENDENT_CONTROL_ID = "choropleth-exclude-independent";
+const TOP_PARTY_TIE_COLOR = "#94a3b8"; // 同率最大時の専用色
 
 function resolveTopPartyColor(partyName, index = 0) {
   const name = normaliseString(partyName);
@@ -232,6 +233,7 @@ function buildTopPartyFromPrefSnapshot(prefTotalsSnapshot, partyShareSnapshot, {
         ratio: totalSeats > 0 ? bestSeats / totalSeats : 0,
         total: totalSeats,
         independentOnly: isIndependentOnly(bestParties, bestSeats, totalSeats),
+        isTie: bestParties.length > 1,
       });
     }
   });
@@ -264,6 +266,7 @@ function buildTopPartyFromMunicipalSnapshot(municipalitySnapshot, { excludeIndep
         ratio: entry.total > 0 ? bestSeats / entry.total : 0,
         total: entry.total,
         independentOnly: isIndependentOnly(bestParties, bestSeats, entry.total),
+        isTie: bestParties.length > 1,
       });
     }
   });
@@ -987,6 +990,7 @@ function buildFeatureCollection(
           : null;
       const topPartyKey =
         topPartyEntry?.independentOnly === true ? INDEPENDENT_ONLY_KEY : topPartyName;
+      const topPartyTie = topPartyEntry?.isTie === true;
       let dataStatus = statusValue ?? DATA_STATUS.MISSING;
       if (hasTotal && totalSeats > 0) {
         dataStatus = statusValue === DATA_STATUS.EXPIRED ? DATA_STATUS.EXPIRED : DATA_STATUS.OK;
@@ -1007,6 +1011,7 @@ function buildFeatureCollection(
           data_term_end: termEnd,
           data_top_party: topPartyEntry ?? null,
           data_top_party_name: topPartyKey,
+          data_top_party_tie: topPartyTie,
         },
       };
     }),
@@ -1095,6 +1100,7 @@ function applyMetricsToSource(
         ? topPartyEntry.parties[0]
         : null;
     const topPartyKey = topPartyEntry?.independentOnly === true ? INDEPENDENT_ONLY_KEY : topPartyName;
+    const topPartyTie = topPartyEntry?.isTie === true;
     let dataStatus = statusValue ?? DATA_STATUS.MISSING;
     let dataError = true;
     if (hasTotal && totalSeats > 0) {
@@ -1114,6 +1120,7 @@ function applyMetricsToSource(
       data_term_end: termEnd,
       data_top_party: topPartyEntry ?? null,
       data_top_party_name: topPartyKey,
+      data_top_party_tie: topPartyTie,
     };
     if (dataError) {
       hasError = true;
@@ -1192,6 +1199,8 @@ function buildColorExpression(stops, metric = MAP_METRICS.RATIO) {
       "case",
       ["==", ["coalesce", ["feature-state", "data_status"], ["get", "data_status"], DATA_STATUS.OK], DATA_STATUS.MISSING],
       DATA_STATUS_COLORS[DATA_STATUS.MISSING],
+      ["==", ["coalesce", ["feature-state", "data_top_party_tie"], false], true],
+      TOP_PARTY_TIE_COLOR,
       matchExpression,
     ];
   }
@@ -1341,6 +1350,7 @@ function buildLegendBreaks(stops, metric) {
       label: entry.name,
     }));
     entries.push({ color: INDEPENDENT_ONLY_COLOR, label: "該当なし（無所属のみ）" });
+    entries.push({ color: TOP_PARTY_TIE_COLOR, label: "同率最大（複数）" });
     entries.push({ color: "#6b7280", label: "その他/無所属" });
     return entries;
   }
