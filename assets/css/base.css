@@ -751,6 +751,23 @@
         min-inline-size: 0;
       }
 
+      .choropleth-control-group.is-hidden {
+        display: none;
+      }
+
+      .choropleth-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 14px;
+        color: var(--text);
+      }
+
+      .choropleth-toggle input[type="checkbox"] {
+        width: 16px;
+        height: 16px;
+      }
+
       .choropleth-control-group legend {
         padding: 0 6px;
         margin-left: -4px;
