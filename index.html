@@ -286,6 +286,24 @@
                 議員数
               </label>
             </div>
+            <div class="choropleth-metric-option">
+              <input
+                type="radio"
+                name="choropleth-metric"
+                id="choropleth-metric-top"
+                value="top_party"
+                data-choropleth-metric="top_party"
+              />
+              <label
+                for="choropleth-metric-top"
+                class="choropleth-metric-tab"
+                role="tab"
+                data-choropleth-metric="top_party"
+                aria-controls="choropleth-map"
+              >
+                最大会派
+              </label>
+            </div>
           </fieldset>
           <form class="choropleth-controls" aria-label="表示条件の選択">
             <fieldset class="choropleth-control-group">
@@ -313,11 +331,18 @@
                 <span id="choropleth-year-display" class="choropleth-year-display">-</span>
               </div>
             </fieldset>
-            <fieldset class="choropleth-control-group">
+            <fieldset class="choropleth-control-group" id="choropleth-party-group">
               <legend class="choropleth-control-heading">党派</legend>
               <div class="choropleth-control choropleth-party-control">
                 <select id="choropleth-party"></select>
               </div>
+            </fieldset>
+            <fieldset class="choropleth-control-group" id="choropleth-exclude-independent-group">
+              <legend class="choropleth-control-heading">表示設定</legend>
+              <label class="choropleth-toggle">
+                <input type="checkbox" id="choropleth-exclude-independent" />
+                <span>最大会派判定から無所属を除外</span>
+              </label>
             </fieldset>
           </form>
           <div class="choropleth-map-wrapper">
