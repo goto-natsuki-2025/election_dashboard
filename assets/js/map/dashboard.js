@@ -197,6 +197,7 @@ function applyEventToState(state, event, termYears) {
     prefectureCode: event.prefectureCode,
     total: event.total,
     parties: event.parties,
+    electionDate: event.date,
     expiresAt:
       new Date(event.date.getFullYear() + termYears, event.date.getMonth(), event.date.getDate()),
   };
@@ -222,6 +223,8 @@ function removeExpiredEntriesFromState(state, year, { collector = null, keepExpi
       collector.push({
         municipalityKey,
         prefectureCode: entry.prefectureCode,
+        startDate: entry.electionDate ?? null,
+        endDate: entry.expiresAt ?? null,
       });
     }
     if (keepExpired) {
@@ -815,27 +818,35 @@ function buildFeatureCollection(baseFeatures, partyMetrics, totalsByRegion, stat
       // - ok: totals present and > 0
       // - expired: term expired,次回更新待ち
       // - missing: データなし
-      const statusFromMap =
-        statusByRegion instanceof Map ? statusByRegion.get(normaliseString(regionId)) : null;
-      let dataStatus = statusFromMap ?? DATA_STATUS.MISSING;
-      if (hasTotal && totalSeats > 0) {
-        dataStatus = statusFromMap === DATA_STATUS.EXPIRED ? DATA_STATUS.EXPIRED : DATA_STATUS.OK;
-      } else if (statusFromMap === DATA_STATUS.EXPIRED) {
-        dataStatus = DATA_STATUS.EXPIRED;
-      }
-      const dataError = dataStatus === DATA_STATUS.MISSING;
-      return {
-        ...feature,
+    const statusFromMap =
+      statusByRegion instanceof Map ? statusByRegion.get(normaliseString(regionId)) : null;
+    const statusValue =
+      statusFromMap && typeof statusFromMap === "object" ? statusFromMap.status : statusFromMap;
+    const termStart =
+      statusFromMap && typeof statusFromMap === "object" ? statusFromMap.startDate ?? null : null;
+    const termEnd =
+      statusFromMap && typeof statusFromMap === "object" ? statusFromMap.endDate ?? null : null;
+    let dataStatus = statusValue ?? DATA_STATUS.MISSING;
+    if (hasTotal && totalSeats > 0) {
+      dataStatus = statusValue === DATA_STATUS.EXPIRED ? DATA_STATUS.EXPIRED : DATA_STATUS.OK;
+    } else if (statusValue === DATA_STATUS.EXPIRED) {
+      dataStatus = DATA_STATUS.EXPIRED;
+    }
+    const dataError = dataStatus === DATA_STATUS.MISSING;
+    return {
+      ...feature,
         properties: {
           ...feature.properties,
-          party_ratio: metrics?.ratio ?? 0,
-          party_seats: metrics?.seats ?? 0,
-          total_seats: totalSeats,
-          data_error: dataError,
-          data_status: dataStatus,
-        },
-      };
-    }),
+        party_ratio: metrics?.ratio ?? 0,
+        party_seats: metrics?.seats ?? 0,
+        total_seats: totalSeats,
+        data_error: dataError,
+        data_status: dataStatus,
+        data_term_start: termStart,
+        data_term_end: termEnd,
+      },
+    };
+  }),
   };
 }
 
@@ -901,21 +912,29 @@ function applyMetricsToSource(
     const ratio = hasTotal && Number.isFinite(ratioValue) ? Math.max(0, Math.min(ratioValue, 1)) : 0;
     const statusFromMap =
       statusByRegion instanceof Map ? statusByRegion.get(regionId) ?? null : null;
-      let dataStatus = statusFromMap ?? DATA_STATUS.MISSING;
-      let dataError = true;
-      if (hasTotal && totalSeats > 0) {
-        dataStatus = statusFromMap === DATA_STATUS.EXPIRED ? DATA_STATUS.EXPIRED : DATA_STATUS.OK;
-        dataError = false;
-      } else if (statusFromMap === DATA_STATUS.EXPIRED) {
-        dataStatus = DATA_STATUS.EXPIRED;
-        dataError = false;
-      }
+    const statusValue =
+      statusFromMap && typeof statusFromMap === "object" ? statusFromMap.status : statusFromMap;
+    const termStart =
+      statusFromMap && typeof statusFromMap === "object" ? statusFromMap.startDate ?? null : null;
+    const termEnd =
+      statusFromMap && typeof statusFromMap === "object" ? statusFromMap.endDate ?? null : null;
+    let dataStatus = statusValue ?? DATA_STATUS.MISSING;
+    let dataError = true;
+    if (hasTotal && totalSeats > 0) {
+      dataStatus = statusValue === DATA_STATUS.EXPIRED ? DATA_STATUS.EXPIRED : DATA_STATUS.OK;
+      dataError = false;
+    } else if (statusValue === DATA_STATUS.EXPIRED) {
+      dataStatus = DATA_STATUS.EXPIRED;
+      dataError = false;
+    }
     const state = {
       party_ratio: ratio,
       party_seats: seats,
       total_seats: totalSeats,
       data_error: dataError,
       data_status: dataStatus,
+      data_term_start: termStart,
+      data_term_end: termEnd,
     };
     if (dataError) {
       hasError = true;
@@ -1035,6 +1054,31 @@ function formatTooltipDetail(metric, { ratio, seats, total }) {
     return `${ratioText} (${seatText} / ${totalText})`;
   }
   return `${ratioText} (${seatText})`;
+}
+
+function formatDateJP(value) {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  const y = date.getFullYear();
+  const m = date.getMonth() + 1;
+  const d = date.getDate();
+  return `${y}年${m}月${d}日`;
+}
+
+function formatTermRange(start, end) {
+  const startText = formatDateJP(start);
+  const endText = formatDateJP(end);
+  if (startText && endText) {
+    return `任期満了待ち（${startText}〜${endText}）`;
+  }
+  if (startText) {
+    return `任期満了待ち（${startText}〜）`;
+  }
+  if (endText) {
+    return `任期満了待ち（〜${endText}）`;
+  }
+  return "任期満了待ち";
 }
 
 function renderSummaryText({
@@ -1402,7 +1446,11 @@ export async function initPartyMapDashboard({ candidates }) {
         );
         const code = normaliseString(codeRaw);
         if (code) {
-          statusByRegion.set(code, DATA_STATUS.EXPIRED);
+          statusByRegion.set(code, {
+            status: DATA_STATUS.EXPIRED,
+            startDate: expired?.startDate ?? null,
+            endDate: expired?.endDate ?? null,
+          });
         }
       }
     }
@@ -1999,23 +2047,26 @@ export async function initPartyMapDashboard({ candidates }) {
       const total = Number.isFinite(Number(stateValues.total_seats))
         ? Number(stateValues.total_seats)
         : Number(feature.properties?.total_seats ?? 0);
+      const termStart = stateValues.data_term_start ?? feature.properties?.data_term_start ?? null;
+      const termEnd = stateValues.data_term_end ?? feature.properties?.data_term_end ?? null;
       const dataStatus =
         stateValues.data_status ??
         feature.properties?.data_status ??
         (typeof stateValues.data_error === "boolean" && stateValues.data_error
           ? DATA_STATUS.MISSING
           : DATA_STATUS.OK);
+      const lines = [];
+      lines.push(`<strong>${regionName}</strong>`);
+      if (dataStatus === DATA_STATUS.EXPIRED) {
+        lines.push(`<span>${formatTermRange(termStart, termEnd)}</span>`);
+      }
       const detailText =
         dataStatus === DATA_STATUS.MISSING
           ? "欠損"
-          : dataStatus === DATA_STATUS.EXPIRED
-            ? `${formatTooltipDetail(state.metric, { ratio, seats, total })}（任期満了待ち）`
-            : formatTooltipDetail(state.metric, { ratio, seats, total });
+          : formatTooltipDetail(state.metric, { ratio, seats, total });
+      lines.push(`<span>${detailText}</span>`);
       tooltip.hidden = false;
-      tooltip.innerHTML = `
-        <strong>${regionName}</strong>
-        <span>${detailText}</span>
-      `;
+      tooltip.innerHTML = lines.join("");
       tooltip.style.left = `${event.point.x + 16}px`;
       tooltip.style.top = `${event.point.y + 16}px`;
     });
