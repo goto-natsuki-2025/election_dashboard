@@ -11,8 +11,8 @@ import {
 } from "./renderers.js";
 import { DATA_PATH } from "./constants.js";
 
-// Bump to invalidate cached modules when map logic changes (e.g., top-party categorical coloring).
-const ASSET_VERSION = "?v=20241115";
+// Bump to invalidate cached modules when map logic changes (e.g., initialization fix for exclude independents).
+const ASSET_VERSION = "?v=20241118";
 const PREFETCHED_RESOURCES = new Set();
 function scheduleIdleTask(callback, timeout = 2000) {
   if ("requestIdleCallback" in window) {
