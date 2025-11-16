@@ -1637,7 +1637,13 @@ export async function initPartyMapDashboard({ candidates }) {
     if (municipalYearCache.has(cacheKey)) {
       return municipalYearCache.get(cacheKey);
     }
-    const emptyResult = { totals: new Map(), partySeats: new Map(), statusByRegion: new Map() };
+    const emptyResult = {
+      totals: new Map(),
+      partySeats: new Map(),
+      statusByRegion: new Map(),
+      topPartyByRegion: new Map(),
+      topPartyByRegionWithoutInd: new Map(),
+    };
     if (!municipalContainer || !resource) {
       municipalYearCache.set(cacheKey, emptyResult);
       return emptyResult;
@@ -1649,31 +1655,30 @@ export async function initPartyMapDashboard({ candidates }) {
     }
     const totals = new Map();
     const partySeats = new Map();
-  const statusByRegion = new Map();
-  const expiredEntries = municipalContainer.expiredMunicipalitiesByYear?.get?.(year) ?? [];
-  if (Array.isArray(expiredEntries)) {
-    for (const expired of expiredEntries) {
-      const codeRaw = resolveMunicipalityCode(
-        normaliseString(expired?.prefectureCode ?? ""),
-        expired?.municipalityKey,
-        resource.patternIndex,
-      );
-      const code = normaliseString(codeRaw);
-      if (code) {
-        statusByRegion.set(code, {
-          status: DATA_STATUS.EXPIRED,
-          startDate: expired?.startDate ?? null,
-          endDate: expired?.endDate ?? null,
-        });
+    const statusByRegion = new Map();
+    const expiredEntries = municipalContainer.expiredMunicipalitiesByYear?.get?.(year) ?? [];
+    if (Array.isArray(expiredEntries)) {
+      for (const expired of expiredEntries) {
+        const codeRaw = resolveMunicipalityCode(
+          normaliseString(expired?.prefectureCode ?? ""),
+          expired?.municipalityKey,
+          resource.patternIndex,
+        );
+        const code = normaliseString(codeRaw);
+        if (code) {
+          statusByRegion.set(code, {
+            status: DATA_STATUS.EXPIRED,
+            startDate: expired?.startDate ?? null,
+            endDate: expired?.endDate ?? null,
+          });
+        }
       }
     }
-  }
-    const topPartyByRegion = new Map();
-  rawYear.forEach((entry, municipalityKey) => {
-    if (!entry) return;
-    const codeRaw = resolveMunicipalityCode(
-      normaliseString(entry.prefectureCode ?? ""),
-      municipalityKey,
+    rawYear.forEach((entry, municipalityKey) => {
+      if (!entry) return;
+      const codeRaw = resolveMunicipalityCode(
+        normaliseString(entry.prefectureCode ?? ""),
+        municipalityKey,
         resource.patternIndex,
       );
       const code = normaliseString(codeRaw);
@@ -1682,9 +1687,6 @@ export async function initPartyMapDashboard({ candidates }) {
       if (!Number.isFinite(totalSeats) || totalSeats <= 0) return;
       const currentTotal = totals.get(code) ?? 0;
       totals.set(code, Math.max(currentTotal, totalSeats));
-      // track top party
-      let bestSeats = -1;
-      const bestParties = [];
       if (entry.parties instanceof Map) {
         entry.parties.forEach((seats, party) => {
           const seatsNumber = Number(seats ?? 0);
@@ -1695,25 +1697,44 @@ export async function initPartyMapDashboard({ candidates }) {
             partySeats.set(party, seatMap);
           }
           seatMap.set(code, (seatMap.get(code) ?? 0) + seatsNumber);
-          if (seatsNumber > bestSeats) {
-            bestSeats = seatsNumber;
-            bestParties.length = 0;
-            bestParties.push(party);
-          } else if (seatsNumber === bestSeats) {
-            bestParties.push(party);
-          }
-        });
-      }
-      if (bestSeats >= 0) {
-        topPartyByRegion.set(code, {
-          parties: bestParties,
-          seats: bestSeats,
-          total: totalSeats,
-          ratio: totalSeats > 0 ? bestSeats / totalSeats : 0,
         });
       }
     });
-    const result = { totals, partySeats, statusByRegion, topPartyByRegion };
+    // Resolve top party maps to municipality codes using the rawYear keys/prefecture codes
+    const rawTopAll =
+      municipalContainer.topPartyByYearRegion?.get?.(year) instanceof Map
+        ? municipalContainer.topPartyByYearRegion.get(year)
+        : new Map();
+    const rawTopWithoutInd =
+      municipalContainer.topPartyByYearRegionWithoutInd?.get?.(year) instanceof Map
+        ? municipalContainer.topPartyByYearRegionWithoutInd.get(year)
+        : new Map();
+
+    const topPartyByRegion = new Map();
+    const topPartyByRegionWithoutInd = new Map();
+
+    rawYear.forEach((entry, municipalityKey) => {
+      const prefCodeNorm = normaliseString(entry?.prefectureCode ?? "");
+      const codeRaw = resolveMunicipalityCode(prefCodeNorm, municipalityKey, resource.patternIndex);
+      const code = normaliseString(codeRaw);
+      if (!code) return;
+
+      const topAll = rawTopAll.get(municipalityKey);
+      if (topAll) {
+        topPartyByRegion.set(code, topAll);
+      }
+      const topNoInd = rawTopWithoutInd.get(municipalityKey);
+      if (topNoInd) {
+        topPartyByRegionWithoutInd.set(code, topNoInd);
+      }
+    });
+    const result = {
+      totals,
+      partySeats,
+      statusByRegion,
+      topPartyByRegion,
+      topPartyByRegionWithoutInd,
+    };
     municipalYearCache.set(cacheKey, result);
     return result;
   };
