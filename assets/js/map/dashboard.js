@@ -3,7 +3,9 @@ import { fetchGzipJson, isWinningOutcome, normaliseString } from "../utils.js";
 const PREFECTURE_TOPO_PATH = "assets/data/japan.topojson.gz";
 const MUNICIPAL_TOPO_PATH = "assets/data/municipal.topojson.gz";
 const SHIZUOKA_LEGACY_TOPO_PATH = "assets/data/shizuoka.topojson.gz";
-const MUNICIPAL_LEGACY_THRESHOLD_YEAR = 2024;
+// Hamamatsu (Shizuoka) wards changed in 2024, but the 2023 election term lasts through 2027.
+// Keep using legacy municipal geometry until the 2027 data horizon to avoid missing seats.
+const MUNICIPAL_LEGACY_THRESHOLD_YEAR = 2028;
 const SHIZUOKA_PREF_CODE = "22";
 const COLOR_PALETTE = [
   "#f8fafc",
