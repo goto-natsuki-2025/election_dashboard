@@ -2,7 +2,7 @@ import calendar
 import math
 import re
 from collections import defaultdict
-from datetime import date, datetime, timezone
+from datetime import date, datetime
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
@@ -15,6 +15,7 @@ COMPENSATION_PATH = DATA_DIR / "SeatsAndCompensation.csv"
 OUTPUT_SUMMARY_CSV = DATA_DIR / "party_compensation_summary_2020.csv"
 OUTPUT_YEARLY_CSV = DATA_DIR / "party_compensation_yearly_2020.csv"
 OUTPUT_MUNICIPAL_CSV = DATA_DIR / "party_compensation_municipal_2020.csv"
+FIXED_GENERATED_AT = "1970-01-01T00:00:00+00:00"
 
 WINNING_KEYWORDS = [
     "当選",
@@ -102,6 +103,13 @@ BONUS_COLUMN_INDICES: Dict[int, int] = {
     6: 13,
     12: 14,
 }
+
+
+def add_generated_at(payload: dict) -> dict:
+    """Return a copy of payload with a deterministic generated_at value."""
+    payload = dict(payload)
+    payload["generated_at"] = FIXED_GENERATED_AT
+    return payload
 
 
 def to_iso_date(value) -> str:
@@ -318,15 +326,16 @@ def build_party_compensation() -> dict:
 
     term_df = pd.DataFrame(term_records)
     if term_df.empty:
-        return {
-            "generated_at": datetime.now(timezone.utc).isoformat(),
-            "currency": "JPY",
-            "formula": "Prorated using monthly amount and bonus rates.",
-            "source_compensation_year": 2020,
-            "rows": [],
-            "party_summary": [],
-            "municipality_breakdown": [],
-        }
+        return add_generated_at(
+            {
+                "currency": "JPY",
+                "formula": "Prorated using monthly amount and bonus rates.",
+                "source_compensation_year": 2020,
+                "rows": [],
+                "party_summary": [],
+                "municipality_breakdown": [],
+            }
+        )
 
     annual_records = []
     for row in term_df.itertuples(index=False):
@@ -384,15 +393,16 @@ def build_party_compensation() -> dict:
 
     annual_df = pd.DataFrame(annual_records)
     if annual_df.empty:
-        return {
-            "generated_at": datetime.now(timezone.utc).isoformat(),
-            "currency": "JPY",
-            "formula": "Prorated using monthly amount and bonus rates.",
-            "source_compensation_year": 2020,
-            "rows": [],
-            "party_summary": [],
-            "municipality_breakdown": [],
-        }
+        return add_generated_at(
+            {
+                "currency": "JPY",
+                "formula": "Prorated using monthly amount and bonus rates.",
+                "source_compensation_year": 2020,
+                "rows": [],
+                "party_summary": [],
+                "municipality_breakdown": [],
+            }
+        )
 
     party_year_rows = []
     for (party, year), group in annual_df.groupby(["party", "year"]):
@@ -460,15 +470,16 @@ def build_party_compensation() -> dict:
             }
         )
 
-    return {
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-        "currency": "JPY",
-        "formula": "Prorated using monthly amount and bonus rates.",
-        "source_compensation_year": 2020,
-        "rows": party_year_rows,
-        "party_summary": party_summary,
-        "municipality_breakdown": municipality_rows,
-    }
+    return add_generated_at(
+        {
+            "currency": "JPY",
+            "formula": "Prorated using monthly amount and bonus rates.",
+            "source_compensation_year": 2020,
+            "rows": party_year_rows,
+            "party_summary": party_summary,
+            "municipality_breakdown": municipality_rows,
+        }
+    )
 
 
 def main() -> None:
