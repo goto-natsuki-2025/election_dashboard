@@ -1,4 +1,5 @@
 import gzip
+import inspect
 import json
 import math
 import re
@@ -842,8 +843,14 @@ def build_top_dashboard_payload(candidates: List[Dict[str, Any]]):
 def write_json(path: Path, payload: Dict[str, Any]) -> None:
     data = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     if path.suffix == ".gz":
-        with gzip.open(path, "wb", mtime=0) as stream:
-            stream.write(data)
+        supports_mtime = "mtime" in inspect.signature(gzip.open).parameters
+        if supports_mtime:
+            with gzip.open(path, "wb", mtime=0) as stream:
+                stream.write(data)
+        else:
+            # Fallback for older Python without mtime support on gzip.open
+            with gzip.GzipFile(filename=str(path), mode="wb", mtime=0) as stream:
+                stream.write(data)
     else:
         path.write_bytes(data)
 
