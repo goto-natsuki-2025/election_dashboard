@@ -3,7 +3,7 @@ import json
 import math
 import re
 from collections import defaultdict
-from datetime import date, datetime, timezone
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Set
 
@@ -17,6 +17,7 @@ if __package__ in {None, ""}:
     from generate_compensation_data import (  # type: ignore
         TERM_YEARS,
         WINNING_KEYWORDS,
+        add_generated_at,
         add_years_safe,
         build_party_compensation,
         to_iso_date,
@@ -25,6 +26,7 @@ else:
     from .generate_compensation_data import (
         TERM_YEARS,
         WINNING_KEYWORDS,
+        add_generated_at,
         add_years_safe,
         build_party_compensation,
         to_iso_date,
@@ -621,22 +623,23 @@ def build_win_rate_dataset(
 
     election_series.sort(key=lambda item: item["date"])
 
-    return {
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-        "summary": {
-            "parties": summary_entries,
-            "totals": {
-                "candidates": total_candidates,
-                "winners": total_winners,
-                "ratio": overall_ratio,
+    return add_generated_at(
+        {
+            "summary": {
+                "parties": summary_entries,
+                "totals": {
+                    "candidates": total_candidates,
+                    "winners": total_winners,
+                    "ratio": overall_ratio,
+                },
             },
-        },
-        "timeline": {
-            "months": months,
-            "series": timeline_series,
-        },
-        "events": election_series,
-    }
+            "timeline": {
+                "months": months,
+                "series": timeline_series,
+            },
+            "events": election_series,
+        }
+    )
 
 
 def build_vote_optimization_dataset(candidates: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -807,12 +810,13 @@ def build_vote_optimization_dataset(candidates: List[Dict[str, Any]]) -> Dict[st
         "max_date": max_date.isoformat() if max_date else None,
     }
 
-    return {
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-        "summary": summary_payload,
-        "parties": party_summary,
-        "elections": included_elections,
-    }
+    return add_generated_at(
+        {
+            "summary": summary_payload,
+            "parties": party_summary,
+            "elections": included_elections,
+        }
+    )
 
 
 def build_top_dashboard_payload(candidates: List[Dict[str, Any]]):
@@ -827,28 +831,30 @@ def build_top_dashboard_payload(candidates: List[Dict[str, Any]]):
         "max_date": timeline["max_date"],
     }
 
-    return {
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-        "summary": summary,
-        "timeline": timeline,
-    }
+    return add_generated_at(
+        {
+            "summary": summary,
+            "timeline": timeline,
+        }
+    )
 
 
 def write_json(path: Path, payload: Dict[str, Any]) -> None:
     data = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     if path.suffix == ".gz":
-        with gzip.open(path, "wb") as stream:
+        with gzip.open(path, "wb", mtime=0) as stream:
             stream.write(data)
     else:
         path.write_bytes(data)
 
 
 def build_payload(records: List[Dict[str, Any]]) -> Dict[str, Any]:
-    return {
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-        "schema_version": 1,
-        "records": records,
-    }
+    return add_generated_at(
+        {
+            "schema_version": 1,
+            "records": records,
+        }
+    )
 
 
 def main() -> None:
