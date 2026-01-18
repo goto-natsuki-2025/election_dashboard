@@ -1,0 +1,65 @@
+name: data-pipeline
+
+on:
+  repository_dispatch:
+    types: [run-data-pipeline]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pandas pyarrow
+
+      - name: Run data pipeline
+        run: python -m election_dashboard.data_pipeline.run_pipeline
+
+      - name: Show git status
+        run: git status --short
+
+      - name: Prepare metadata
+        id: vars
+        run: |
+          DATE=$(date -u +%Y%m%d)
+          TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          echo "date=$DATE" >> $GITHUB_OUTPUT
+          echo "timestamp=$TS" >> $GITHUB_OUTPUT
+          echo "BRANCH=pipeline/$DATE" >> $GITHUB_ENV
+
+      - name: Stage changes
+        id: stage
+        run: |
+          git add -A
+          if git diff --cached --quiet; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create or update PR
+        if: steps.stage.outputs.changed == 'true'
+        id: cpr
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: ${{ env.BRANCH }}
+          base: main
+          title: "pipeline: ${{ steps.vars.outputs.date }}"
+          body: "Automated pipeline run at ${{ steps.vars.outputs.timestamp }} (UTC)."
+          commit-message: "pipeline: ${{ steps.vars.outputs.timestamp }}"
+          labels: pipeline
