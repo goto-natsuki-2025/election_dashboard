@@ -63,3 +63,31 @@ jobs:
           body: "Automated pipeline run at ${{ steps.vars.outputs.timestamp }} (UTC)."
           commit-message: "pipeline: ${{ steps.vars.outputs.timestamp }}"
           labels: pipeline
+
+      - name: Enable auto-merge
+        if: steps.stage.outputs.changed == 'true' && steps.cpr.outputs.pull-request-number != ''
+        uses: actions/github-script@v7
+        env:
+          PR_NUMBER: ${{ steps.cpr.outputs.pull-request-number }}
+        with:
+          script: |
+            const prNumber = Number(process.env.PR_NUMBER || 0);
+            if (!prNumber) {
+              core.setFailed('PR number missing');
+              return;
+            }
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber,
+            });
+            await github.graphql(`
+              mutation($prId:ID!){
+                enablePullRequestAutoMerge(input:{
+                  pullRequestId:$prId,
+                  mergeMethod:SQUASH
+                }){
+                  clientMutationId
+                }
+              }
+            `, { prId: pr.node_id });
