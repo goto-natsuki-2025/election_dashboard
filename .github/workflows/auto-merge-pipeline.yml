@@ -11,7 +11,10 @@ permissions:
 
 jobs:
   merge:
-    if: startsWith(github.event.pull_request.head.ref, 'pipeline/')
+    if: >
+      startsWith(github.event.pull_request.head.ref, 'pipeline/') &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      (github.actor == 'goto-natsuki-2025' || github.actor == 'github-actions[bot]')
     runs-on: ubuntu-latest
     steps:
       - name: Check mergeability
